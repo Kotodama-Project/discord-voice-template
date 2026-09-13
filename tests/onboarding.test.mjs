@@ -1,0 +1,8 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {applicationName,DEFAULT_APPLICATION_NAME,humanBoundary} from '../src/onboarding.mjs';
+test('new Bot uses the accepted application name and rejects reserved Discord naming',()=>{assert.equal(applicationName(DEFAULT_APPLICATION_NAME),'Kotodama Casual Template');assert.throws(()=>applicationName('Kotodama Discord Template'),/APPLICATION_NAME_RESERVED/);});
+test('login remains human-required even when a CLI can technically click the form',()=>{const r=humanBoundary('https://discord.com/login',{text:'ログイン'});assert.equal(r.required,true);assert.equal(r.category,'identity');assert.equal(r.code,'HUMAN_LOGIN_REQUIRED');});
+test('authenticated portal permits preparation while legal acceptance remains human-required',()=>{const url='https://discord.com/developers/applications';assert.equal(humanBoundary(url,{text:'新しいアプリケーション'}).required,false);assert.equal(humanBoundary(url,{text:'作成',dialogText:'作成をクリックすると\n利用規約に同意したものと見なされます。'}).code,'HUMAN_TERMS_REQUIRED');});
+test('token generation and final server authorization have explicit human categories',()=>{assert.equal(humanBoundary('https://discord.com/developers/applications/100000000000000001/bot',{text:'Reset Token'}).category,'credential');assert.equal(humanBoundary('https://discord.com/oauth2/authorize?client_id=100000000000000001').category,'access_grant');});
+
+test('login inside a modal remains an identity step even under a regular event URL',()=>{assert.equal(humanBoundary('https://example.invalid/event',{dialogText:'ログイン メールアドレスを入力してください'}).code,'HUMAN_LOGIN_REQUIRED');});

@@ -1,0 +1,25 @@
+{
+  "name": "kotodama-discord-voice-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Discord VCでGPT-Liveと話し、録音とWhisper全文文字起こし、担当マシンへの編集依頼までつなぐテンプレート",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "packageManager": "pnpm@11.19.0",
+  "bin": { "kotodama": "./bin/kotodama.mjs" },
+  "scripts": {
+    "start": "node bin/kotodama.mjs start",
+    "test": "node --test --test-concurrency=1 --test-timeout=30000 tests/*.test.mjs",
+    "check": "node tools/check-public.mjs"
+  },
+  "dependencies": {
+    "@discordjs/voice": "0.19.2",
+    "@snazzah/davey": "0.1.12",
+    "discord.js": "14.27.0",
+    "openai": "7.15.0",
+    "opusscript": "0.1.1",
+    "ws": "8.21.3",
+    "zod": "4.6.2"
+  }
+}

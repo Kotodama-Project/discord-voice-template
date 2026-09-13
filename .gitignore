@@ -1,0 +1,10 @@
+node_modules/
+.kotodama/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+*.sqlite*
+artifacts/
+browser-profile/

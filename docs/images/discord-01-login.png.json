@@ -1,0 +1,11 @@
+{
+  "source": "https://discord.com/login",
+  "capturedAt": "2026-09-12T15:42:39.969Z",
+  "scope": "empty login fields and explanatory labels only",
+  "excluded": [
+    "QR authentication panel",
+    "existing account information"
+  ],
+  "fieldValuesEmpty": true,
+  "sha256": "2bb367106bdd246148cbdf8f66ac68d87c5742115ef66d1ce68029819825bc12"
+}
