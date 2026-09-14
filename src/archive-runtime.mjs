@@ -16,14 +16,14 @@ export class ArchiveRuntime {
     check(Number.isInteger(this.batchMs)&&this.batchMs>=20&&this.batchMs<=250&&Number.isInteger(this.rotationMs)&&this.rotationMs>=1000&&this.rotationMs<=60000,'ARCHIVE_RUNTIME_TIMING');
     const guard=(b,phase)=>{
       const p=policy(),pa=p.archive;
-      return p.owner?.kind==='local'&&pa?.enabled===true&&(!['process','asr','correct','intent'].includes(phase)||pa.canProcess===true)&&p.installation===b.installation&&p.agentBinding?.vmId===b.vmId&&p.agentBinding?.agentId===b.agentId&&p.discord?.guildId===b.guildId&&p.discord?.voiceChannelId===b.channelId&&p.discord.operators?.includes(b.actorId)&&pa.archiveRoot===a.archiveRoot&&pa.journalPath===a.journalPath&&pa.retentionPolicyRef===b.retentionPolicyRef&&pa.sourceRef===b.sourceRef&&pa.actorId===b.actorId&&b.readers.every(id=>pa.readers?.includes(id))&&b.speakerIds.every(id=>p.voice?.participantIds?.includes(id))&&authorize(b,phase)===true;
+      return p.owner?.kind==='local'&&pa?.enabled===true&&(!['process','asr','correct','intent'].includes(phase)||pa.canProcess===true)&&p.installation===b.installation&&p.agentBinding?.vmId===b.vmId&&p.agentBinding?.agentId===b.agentId&&p.discord?.guildId===b.guildId&&p.discord?.voiceChannelId===b.channelId&&p.discord.operators?.includes(b.actorId)&&pa.archiveRoot===a.archiveRoot&&pa.journalPath===a.journalPath&&pa.retentionPolicyRef===b.retentionPolicyRef&&pa.sourceRef===b.sourceRef&&pa.actorId===b.actorId&&b.readers.every(id=>pa.readers?.includes(id))&&b.speakerIds.every(id=>p.voice?.participantIds?.includes(id)||pa.captureAssistantAudio===true&&id===pa.assistantSpeakerId&&b.assistantSpeakerId===id)&&authorize(b,phase)===true;
     };
     this.guard=guard;
     const sink=createArchiveSink({archiveRoot:a.archiveRoot,ffmpeg:a.ffmpeg??'ffmpeg',authorize:guard,clock,maxPcmBytes:a.maxPcmBytes??128*1024*1024});
     const asr=createWhisperArchiveAsr({sink,endpoint:a.whisperEndpoint,authorize:guard,timeoutMs:a.whisperTimeoutMs??120000,fetcher,protocol:a.whisperProtocol??'local',model:a.whisperModel,apiKeyEnv:a.whisperApiKeyEnv,readEnv});
     const correct=createLunaArchiveCorrector({command:structuredClone(config.analyzer),cwd:config.worker.workspace,dataDir:path.join(config.dataDir,'archive-model'),authorize:guard,readEnv,sdk,onUsage,vocabulary:a.vocabulary??[]});
     const recordIntent=createArchiveIntentRecorder({store,analyzer,sink,authorize:guard});
-    this.adapter=new ArchiveAdapter({journalPath:a.journalPath,authorize:guard,sink,asr,correct,recordIntent,limits:{maxFrames:Math.ceil(this.rotationMs*48)+48000,maxPcmBytes:a.maxPcmBytes??128*1024*1024,maxSessions:a.maxPendingSessions??16,maxJournalPcmBytes:a.maxJournalPcmBytes??512*1024*1024}});
+    this.adapter=new ArchiveAdapter({journalPath:a.journalPath,authorize:guard,sink,asr,correct,recordIntent,limits:{maxSpeakers:17,maxFrames:Math.ceil(this.rotationMs*48)+48000,maxPcmBytes:a.maxPcmBytes??128*1024*1024,maxSessions:a.maxPendingSessions??16,maxJournalPcmBytes:a.maxJournalPcmBytes??512*1024*1024}});
     for(const row of this.adapter.db.prepare("SELECT id FROM archive_sessions WHERE state='capturing'").all()){
       const prior=this.adapter.session(row.id);if(!guard(prior.binding,'seal'))continue;
       const end=this.adapter.db.prepare('SELECT max(start_frame+length(pcm)/2) AS frame FROM archive_frames WHERE session=?').get(row.id).frame;
@@ -33,12 +33,12 @@ export class ArchiveRuntime {
     // Queued sessions are already durable. Do not invent a new session at startup.
     this.startup=setImmediate(()=>{this.startup=null;this.kick();});
   }
-  binding(startedAtMs){const p=this.policy(),a=p.archive;return {sessionId:'session-'+randomUUID(),guildId:p.discord.guildId,channelId:p.discord.voiceChannelId,startedAtMs,sampleRateHz:48000,channels:1,sampleFormat:'s16le',speakerIds:[...(a.speakerIds??p.voice.participantIds)],sourceRef:a.sourceRef,retentionPolicyRef:a.retentionPolicyRef,actorId:a.actorId,readers:[...a.readers],installation:p.installation,agentId:p.agentBinding.agentId,vmId:p.agentBinding.vmId};}
+  binding(startedAtMs){const p=this.policy(),a=p.archive,speakerIds=[...(a.speakerIds??p.voice.participantIds)];if(a.captureAssistantAudio===true)speakerIds.push(a.assistantSpeakerId);return {sessionId:'session-'+randomUUID(),guildId:p.discord.guildId,channelId:p.discord.voiceChannelId,startedAtMs,sampleRateHz:48000,channels:1,sampleFormat:'s16le',speakerIds,...(a.captureAssistantAudio===true?{assistantSpeakerId:a.assistantSpeakerId}:{}),sourceRef:a.sourceRef,retentionPolicyRef:a.retentionPolicyRef,actorId:a.actorId,readers:[...a.readers],installation:p.installation,agentId:p.agentBinding.agentId,vmId:p.agentBinding.vmId};}
   start(time){const binding=this.binding(time);check(this.guard(binding,'capture'),'ARCHIVE_SCOPE_REVOKED');this.adapter.begin(binding);this.current={binding,batches:new Map(),cursors:new Map(),lastWalls:new Map(),endFrame:0,sequence:0};}
   append(speakerId,pcm48Mono,wallTimeMs){
     check(!this.closed&&!this.closing&&this.captureEnabled,'ARCHIVE_CAPTURE_STOPPED');
     check(Buffer.isBuffer(pcm48Mono)&&pcm48Mono.length>0&&pcm48Mono.length%2===0&&pcm48Mono.length<=96000&&Number.isSafeInteger(wallTimeMs)&&wallTimeMs>=0,'ARCHIVE_PACKET_INVALID');
-    const p=this.policy();check(p.voice.participantIds.includes(speakerId),'ARCHIVE_SPEAKER_MISMATCH');
+    const p=this.policy();check(p.voice.participantIds.includes(speakerId)||p.archive?.captureAssistantAudio===true&&speakerId===p.archive.assistantSpeakerId,'ARCHIVE_SPEAKER_MISMATCH');
     // Digital silence creates neither a recording job nor model work.
     if(!this.current&&pcm48Mono.every(x=>x===0))return {ignoredSilence:true};
     if(this.current&&wallTimeMs>=this.current.binding.startedAtMs+this.rotationMs)this.seal();

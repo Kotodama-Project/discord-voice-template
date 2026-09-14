@@ -13,7 +13,7 @@ export class TranscriptTurns {
   #schedule(turn){clearTimeout(turn.timer);turn.timer=setTimeout(()=>this.#emit(turn),this.settleMs);turn.timer.unref?.();}
   #emit(turn){if(this.closed)return;const fragments=[...this.fragments.values()].filter(f=>f.startMs<turn.endMs&&f.endMs>turn.startMs).sort((a,b)=>a.startMs-b.startMs||a.endMs-b.endMs);
     const text=fragments.map(f=>f.text).join('');if(!text.trim()||turn.lastText===text)return;turn.lastText=text;turn.revision=++this.revision;
-    const work=Promise.resolve(this.onTurn({id:turn.id,text,startMs:turn.startMs,endMs:turn.endMs,revision:turn.revision,final:true,finality:'vad_and_settled_transcript',providerTurnComplete:false}));this.pending.push(work);work.catch(()=>{});
+    const work=Promise.resolve(this.onTurn({id:turn.id,text,startMs:turn.startMs,endMs:turn.endMs,revision:turn.revision,final:true,finality:'vad_and_settled_transcript',providerTurnComplete:false,archiveSessionRefs:turn.archiveSessionRefs??[]}));this.pending.push(work);work.catch(()=>{});
   }
   async flush(){for(const turn of this.turns){clearTimeout(turn.timer);if(Number.isFinite(turn.endMs))this.#emit(turn);}await Promise.allSettled(this.pending);}
   async close(){await this.flush();this.closed=true;for(const turn of this.turns)clearTimeout(turn.timer);}

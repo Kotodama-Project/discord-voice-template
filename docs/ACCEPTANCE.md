@@ -16,7 +16,7 @@
 | 実Discordの登録・コマンド表示・成果配送 | 専用Bot登録、実メッセージ→意図→Task→変更・テスト→成果DMのhash読戻し成功。入力はCLIによる接続試験で、利用者の満足確認は別 |
 | 2人・30分の実音声、モード切替、実聴 | 未受入 |
 | 実VCでの割り込み停止時間、120ms prefillの途切れ・体感遅延、500ms queue上限 | 未受入 |
-| 話者別原音・全体音声の保存、OpenAI API・ローカルWhisper両方式の全文文字起こし | 保存パイプラインと訂正はfixture試験。OpenAI本番APIでの実音声文字起こしは未受入 |
+| 参加者別原音・GPT-Live返答track・全体音声の保存、OpenAI API・ローカルWhisper両方式の全文文字起こし、時系列export | Live/local入力と再生受付音声を使う保存パイプライン、OpenAI multipartと全文text fallback、話者時系列、制限付きexportはfixture試験。実聴完了範囲、OpenAI本番APIでの実音声文字起こしは未受入 |
 | 公開テンプレートとして別設定で再現 | 未受入 |
 
 `offline_fixture`は合成試験の表示です。設定にIDやモデル名があるだけで接続済みとは表示しません。CIは実音声・APIキー・Discord tokenを使いません。

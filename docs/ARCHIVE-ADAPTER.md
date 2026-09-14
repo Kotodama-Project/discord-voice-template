@@ -12,7 +12,7 @@
 
 ## 既存系との接続
 
-既存recorderは48kHz/mono、`session_start_silence_padded`で、話者別mp3と`mixed.mp3`を保存する。`speakers.json`のfile0はmixed、以後は対応speaker ID。`metadata.json`はsessionId/channelId/guildId/startedAt/endedAt/participantsとtimelineを保持する。本adapterは同じsample alignmentのtracks/mixedとsourceChunksを` sink.seal`へ渡す。既存ownerのencoderとstaging→rename処理でその契約へ書き出すこと。新しい保存先や第二のarchive台帳は作らない。
+recorderは48kHz/mono、`session_start_silence_padded`で、参加者別mp3、設定時のGPT-Live assistant mp3、全trackの`mixed.mp3`を保存する。`speakers.json`のfile0はmixed、以後は対応speaker ID。`metadata.json`はsessionId/channelId/guildId/startedAt/endedAt/participantsとtimelineを保持する。本adapterは同じsample alignmentのtracks/mixedとsourceChunksを` sink.seal`へ渡す。既存ownerのencoderとstaging→rename処理でその契約へ書き出すこと。新しい保存先や第二のarchive台帳は作らない。
 
 `sink.seal`はidempotencyKeyで再照合でき、同じkeyを返す `{sessionId,archiveRef,idempotencyKey}` を返す。書込成功後journal更新前に落ちても、sink自身が二重保存を防ぐ必要がある。保存権限はsinkでもrename直前に照合する。`archive-host.mjs`の`createArchiveSink`がこの処理を実装している。
 
@@ -34,13 +34,13 @@ journal内のPCMは後処理再開用staging。実sinkの`verify`で全保存音
 
 既存30日raw-retentionは`metadata.json.endedAt`、`transcript.json.status=succeeded`、hash付き`knowledge-source-transcript-*.json`、`.ct202-local-grant-<session>.json.artifact_manifest`を読む。このsinkは同名manifestにPCM/MP3のref/size/sha256を記録するが、schemaはretention manifest、`authorityGranted:false`であり転送grantを偽造しない。CT202送信権限はauthorizeで別に判断する。hostは既存保持policy `kotodama.voice-retention/v2`（rawAudioDays=30、transcriptDays/derivedTextDays=null）へ同rootを設定する。既存retentionは文字起こし成功を確認できない場合削除を止めるため、ASRが永続失敗した録音と失敗stagingは保持ownerが別途処理する必要がある。このadapterだけで保持処理が稼働したとはしない。
 
-`createWhisperArchiveAsr({sink,endpoint,authorize,language,timeoutMs})`はhost指定のCT202 `/transcribe` URLへ、検証済みMP3をmultipart `audio`/`language`でPOSTする。redirect拒否・response8MiB上限・timeout。区間start/end/textを保持し、idxは応答順、confidenceはexp(avg_logprob)、欠落時は既存clientと同じ0.8。個別speakerの名乗り不一致は拒否。URLは秘密の固定値を同梱しないのでhostがCT202 allowlistと一致を確認する。
+`createWhisperArchiveAsr({sink,endpoint,authorize,language,timeoutMs,protocol,model,apiKeyEnv})`は検証済みMP3を、privateなローカルWhisper互換endpointへmultipart `audio`/`language`で送るか、OpenAI公式transcription APIへmultipart `file`/`model`/`response_format=verbose_json`で送る。OpenAIのBearer keyは指定環境変数から呼出時に読む。redirect拒否・response 8MiB上限・timeout。区間start/end/textを保持し、segmentsが省略された全文textも区間全体として保持する。idxは応答順、confidenceはexp(avg_logprob)、欠落時は0.8。個別speakerの名乗り不一致は拒否する。
 
 `createLunaArchiveCorrector({command,cwd,dataDir,authorize,vocabulary})`は既存Codex CLI実行器と`gpt-5.6-luna`を使い、raw個別+mixed+語彙から型付きeditsを取得する。話者/idx/時刻/beforeは厳密照合。元の再decode品質判定とは別のLLM訂正候補であり、音響再decodeの認証済み証拠を作らない。モデル呼出しの権限と予算はhost側で束縛する。
 
 encoder失敗は同一idempotencyKeyのstagingを残して停止し、次回も同じ場所が存在する限り明示復旧待ちとなる。retryのたびに新しい原音コピーを増やさない。既存録音/別jobを削除する復旧は実装していない。
 
-`createArchiveIntentRecorder({store,analyzer,sink,authorize})`は既存Storeへ安定Source IDでingestし、analyzerから得た意図をsaveIntentsする。Task生成/実行は行わない。bindingにactorId/readers（本人を含む）を追加する。raw transcript、同bytesのknowledge snapshot、fused.json、意図receiptを既存session内に書く。既存receipt再送は現在scope/sourceを検査して返す。
+`createArchiveIntentRecorder({store,analyzer,sink,authorize})`は既存Storeへ安定Source IDでingestし、analyzerから得た意図をsaveIntentsする。Task生成/実行は行わない。bindingにactorId/readers（本人を含む）を追加する。raw transcript、同bytesのknowledge snapshot、共有timelineの開始時刻順に並べたfused.json、意図receiptを既存session内に書く。全文Sourceは全trackを含むが、意図解析にはactorId本人の区間だけを渡す。既存receipt再送は現在scope/sourceを検査して返す。
 
 ## 確認範囲
 
