@@ -1,8 +1,8 @@
 # ArchiveRuntime初期化と呼出し
 
-VoiceRoomの48kHz受信に接続済み。archiveを明示設定しvoice.storeAudioを有効にしたlocal ownerで使用する。journalPathはdataDir内の絶対path、archiveRootは既存保存先の絶対pathに限定する。既定では録音しない。
+VoiceRoomの48kHz受信とGPT-Liveの再生受付音声に接続済み。archiveを明示設定しvoice.storeAudioを有効にしたlocal ownerで使用する。`voice.transcriptSource` は `live` / `local` のどちらでもよく、既定のLive会話に録音を足すためだけにリアルタイム用ローカルASRを要求しない。journalPathはdataDir内の絶対path、archiveRootは既存保存先の絶対pathに限定する。既定では録音しない。
 
-保存用Whisperの送り先は `whisperProtocol` で選ぶ。`local`（既定）はloopbackまたは`voice.localAsr`と同じhostに束縛する。`openai`は `https://api.openai.com` 固定で、`whisperModel`（既定 `whisper-1`）と `whisperApiKeyEnv` が指す環境変数のキーを使い、multipart `file`・`response_format=verbose_json`・segment timestampsで呼ぶ。それ以外の外部送信先は設定できない。`whisperTimeoutMs` で1回あたりの上限を調整する。
+保存用Whisperの送り先は `whisperProtocol` で選ぶ。`local`（既定）はloopback、private LAN、またはtailnet hostに束縛する。`openai`は `https://api.openai.com/v1/audio/transcriptions` 固定で、`whisperModel`（既定 `whisper-1`）と `whisperApiKeyEnv` が指す環境変数のキーを使い、multipart `file`・`response_format=verbose_json`・segment timestampsで呼ぶ。segmentが省略され全文textだけ返った場合も、録音区間全体の一segmentとして保持する。それ以外の外部送信先は設定できない。`whisperTimeoutMs` で1回あたりの上限を調整する。
 
 ```js
 import {ArchiveRuntime} from './archive-runtime.mjs';
@@ -19,8 +19,11 @@ const archiveConfig = {
     sourceRef: currentCaptureSourceRef,
     actorId: operatorId,
     readers: authorizedReaders,
+    captureAssistantAudio: true,
+    assistantSpeakerId: 'kotodama-assistant',
     ffmpeg: installedFfmpegExecutable,
-    whisperEndpoint: allowedCt202TranscribeUrl,
+    whisperProtocol: 'local',
+    whisperEndpoint: privateWhisperTranscribeUrl,
     batchMs: 250,
     rotationMs: 55000,
     maxPendingSessions: 16,
@@ -56,7 +59,7 @@ archive.stopCapture();
 await archive.close();
 ```
 
-必須の通常configは`installation`、`agentBinding.agentId/vmId`、`discord.guildId/voiceChannelId/operators`、`voice.participantIds`、`analyzer`、`worker.workspace`、`dataDir`、`owner.kind=local`。archive.actorIdはoperatorsに含め、readersはactorを含む。policyは同じconfig形状を返し、現在のspeaker/readers/actor・保存先・保持policy・source・VM/agentを再照合する。`authorize`は同期booleanで、Promiseを権限として認めない。30日保持の既存owner登録もrootが行う。
+必須の通常configは`installation`、`agentBinding.agentId/vmId`、`discord.guildId/voiceChannelId/operators`、`voice.participantIds`、`analyzer`、`worker.workspace`、`dataDir`、`owner.kind=local`。archive.actorIdはoperatorsに含め、readersはactorを含む。`captureAssistantAudio`は既定で`false`。`true`を明示した場合は、数字だけでなく、参加者・operators・readers・actorIdのどれとも重複しない`assistantSpeakerId`をGPT-Live返答trackに使う（`mixed`も不可）。このIDは参加者の音声処理・資料閲覧・実行権限を付与しない。policyは同じconfig形状を返し、現在のspeaker/readers/actor・保存先・保持policy・source・VM/agentを再照合する。`authorize`は同期booleanで、Promiseを権限として認めない。30日保持の既存owner登録もrootが行う。
 
 Responses訂正はconfig.analyzerのkind=responses/model=gpt-5.6-luna/apiKeyEnv/baseUrl/timeoutSeconds/maxOutputTokensを再利用。API keyは呼出時にreadEnvで読む。strict JSON、reasoning low、store false、retry0、truncation disabled、出力256〜8000tokensの上限。SDKfixtureで検証し実API利用はしていない。CLI設定の場合は既存CLI経路も保持する。
 

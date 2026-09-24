@@ -4,6 +4,7 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
 import {VoiceConnectionStatus as State} from '@discordjs/voice';
 import {Store} from '../src/store.mjs';
 import {exampleConfig} from '../src/config.mjs';
@@ -13,7 +14,7 @@ import {voiceCommand,voiceStatusText} from '../src/voice-control.mjs';
 
 const a='100000000000000002',b='100000000000000004',outsider='100000000000000009';
 class Connection extends EventEmitter {
-  constructor(options,ready){super();this.options=options;this.state={status:ready?State.Ready:State.Connecting};this.subscriptions=0;this.destroyCount=0;this.receiver={speaking:new EventEmitter()};}
+  constructor(options,ready){super();this.options=options;this.state={status:ready?State.Ready:State.Connecting};this.subscriptions=0;this.destroyCount=0;this.receiver={speaking:new EventEmitter(),subscribe:()=>new PassThrough()};}
   subscribe(){this.subscriptions++;}
   transition(status){const old=this.state;this.state={status};this.emit('stateChange',old,this.state);this.emit(status);}
   destroy(){this.destroyCount++;this.transition(State.Destroyed);}

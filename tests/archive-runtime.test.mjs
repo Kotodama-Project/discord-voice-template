@@ -40,6 +40,9 @@ test('rotation and restart process serially when permitted; one speaker needs on
     assert.equal(calls,4);assert.equal(f.store.tasks(f.actor).length,0);
   }finally{await r.close();}
 });
+test('the configured GPT Live output track shares the recording timeline without becoming a participant grant',async t=>{
+  const f=await setup(t);f.config.archive.captureAssistantAudio=true;f.config.archive.assistantSpeakerId='kotodama-assistant';const r=new ArchiveRuntime({...f,authorize:()=>true,analyzer:{}});try{const human=Buffer.from([10,0]),assistant=Buffer.from([20,0]);r.append(f.actor,human,f.clock());r.append('kotodama-assistant',assistant,f.clock());assert.deepEqual(r.current.binding.speakerIds,[f.actor,'kotodama-assistant']);const sealed=r.seal(),media=r.adapter.tracks(r.adapter.session(sealed.sessionId));assert.equal(media.tracks.find(t=>t.speakerId==='kotodama-assistant').pcm.readInt16LE(0),20);}finally{await r.close();}
+});
 test('remote owner and changed installation identity are refused',async t=>{
   const f=await setup(t);assert.throws(()=>new ArchiveRuntime({...f,config:{...f.config,owner:{kind:'remote'}},authorize:()=>true,analyzer:{}}),/REMOTE_OWNER/);
   const r=new ArchiveRuntime({...f,analyzer:{},authorize:()=>true});try{const pcm=Buffer.from([10,0]);r.append(f.actor,pcm,f.clock());f.config.agentBinding.vmId='different';assert.throws(()=>r.append(f.actor,pcm,f.clock()),/SCOPE_REVOKED/);f.config.agentBinding.vmId='fixture-vm';}finally{await r.close();}

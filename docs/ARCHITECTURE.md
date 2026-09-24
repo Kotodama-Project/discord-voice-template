@@ -2,15 +2,15 @@
 
 Discordのテキスト・音声 → 出典と版 → 意図・ToDo → 明示依頼 → CLI実行器 → 検証済み成果。
 
-`assist` は一回の呼びかけでGPT-Live会話を開き、その話者との複数ターンで同じWebSocketを使います。Lunaのbackend結果は同じセッションのcommentaryへ返し、回答ごとの音声セッションは作りません。`minutes` はVADと専用文字起こしを使い、音声を返しません。どちらも同じ意図抽出器とTask ownerを使います。
+既定の `assist` / `naturalConversation: true` は発話開始時にGPT-Live会話を開き、その話者との複数ターンで同じWebSocketを使います。GPT-Liveは自然会話を担当し、Luna backendは状態・資料・終了判断などを委譲で扱います。`naturalConversation: false` ではLunaの確認済み結果を同じLiveセッションのcommentaryへ返します。`minutes` はVADと専用文字起こしを使い、音声を返しません。いずれも意図抽出器とTask ownerへの明示依頼経路は会話出力から分離します。
 
-`voice.transcriptSource: "local"` ではDiscordの話者別PCMをローカルASRへ渡し、その確定した日本語テキストをSource Evidenceにします。呼びかけ前の発話は保存だけを行い、Live・Luna・Task実行を開始しません。呼びかけ時は確定テキストをLiveの開始履歴へ入れ、その後の音声は同じ話者のLiveセッションへ流します。Live側のtranscript deltaはUI補助に限り、Intentを確定しません。
+`voice.transcriptSource: "live"` はGPT-Liveの入力transcriptを低遅延会話に使います。`"local"` ではDiscordの話者別PCMをローカルASRへ渡し、その確定した日本語テキストをSource Evidenceにします。呼びかけ前の発話は保存だけを行い、Live・Luna・Task実行を開始しません。呼びかけ時は確定テキストをLiveの開始履歴へ入れ、その後の音声は同じ話者のLiveセッションへ流します。どちらを選んでも、録音を有効にすれば別の48kHz archive経路へ原音を送り、Live transcript deltaをWhisper全文の代用にはしません。
 
 単体構成はNode.jsとSQLiteで動きます。組織構成ではremote Task ownerを選びます。
 
 参照した既存候補：Kotodama-project PR #69の部屋別契約、#71の発話制御、#59の文脈と入力の束縛、#67のCLI実行証拠。大きなPR stackやprivate runtimeのソースを丸ごとコピーせず、このテンプレートのコードを新規作成します。参照PRの未受入部分を配備済みと表示しません。
 
-原音の永続保存は既定で行いません。文字起こしとその訂正、資料と仕事の履歴はインストール先のprivate data directoryに保持します。録音・外部処理への同意、閲覧範囲、モデルと費用上限を初回に設定し、停止・取消を実行時に照合します。
+原音の永続保存は既定で行いません。有効時は参加者別track、再生queueへ受け入れたGPT-Live返答のassistant track、全trackのmixedを同じtimelineに保存します。Whisper原文、時刻順の訂正文、資料と仕事の履歴はインストール先のprivate data directoryに保持します。録音・外部処理への同意、閲覧範囲、モデルと費用上限を初回に設定し、停止・取消を実行時に照合します。assistant trackは生成済み・再生受付済み音声の証拠で、割り込み時の実聴完了receiptではありません。全文Sourceには全trackを時系列で残しますが、Intent候補の解析入力は`archive.actorId`本人のtrackだけに限定し、他参加者やassistantの発話を本人の依頼へ変換しません。
 
 固定VCの自動入退室は、一つの直列化した音声制御が扱います。起動時、対象VCの入退室イベント、10秒間隔で人間の在室と現在の対象範囲を照合します。Botは人数に含めません。対象外の参加者がいる間は、新しい音声処理・再生を止めて退出します。手動停止の設定はSQLite内のVC別設定で保持し、仕事の台帳を増やしません。
 

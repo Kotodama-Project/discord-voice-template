@@ -8,9 +8,9 @@
 
 ## できること
 
-- **VCでGPT-Liveと話す**：「ことだま、」と呼びかけるとOpenAIのGPT-Live 1との音声会話を開きます。議事録モードは音声を返さず文字起こしだけを整理します。
+- **VCでGPT-Liveと話す**：既定の `assist` / `naturalConversation: true` では、対象VCで話し始めるとOpenAIのGPT-Live 1との自然な音声会話を開きます。議事録モードは音声を返さず文字起こしだけを整理します。
 - **声で仕事を頼む**：「このファイルを直して」のような明示依頼を、設定した担当マシン（`agentBinding`のVMとworkspace）のCLI実行器へ渡し、変更候補と実際の検証結果を確認します。
-- **録音と全文文字起こし**：話者ごとの原音と全体音声をローカルへ保存し、Whisperで全文の文字起こしを作ります。文字起こしはOpenAI APIとローカルWhisper互換サービスのどちらも選べます。
+- **録音と全文文字起こし**：Discordから受信した参加者ごとの原音、GPT-Liveから再生へ受け入れた返答音声、全trackのmixed音声をローカルへ保存し、録音全体からWhisper文字起こしを作ります。後処理済みの全セッションは一つの時系列ファイルにも出力できます。文字起こし先はOpenAI APIとローカルWhisper互換サービスのどちらも選べます。
 - 「この会話を整理して」「どう思う？」など、テキストでも同じ流れを使えます。訂正、仕事の停止・再開、成果の取得、別の人やチャンネルとの分離を扱います。
 
 単なる提案・質問を実行依頼に変えません。テキストではBotをメンションするか `/kotodama do` を使います。録音の停止と仕事の停止は別です。
@@ -73,13 +73,22 @@ BotはDiscord側でも対象サーバーへ導入してください。Message Co
 
 ## 録音と全文文字起こし
 
-`voice.storeAudio: true` と `archive` の接続設定を明示すると、VCの音声を話者別48kHz原音と全体音声でローカル保存し、セッションごとにWhisperの全文文字起こし・訂正文・出典付きのSource記録を作ります。話した内容の全文は `archiveRoot/<session-id>/transcript.json`（原文）と `fused.json`（訂正済み・話者別）に残ります。
+`voice.storeAudio: true` と `archive` の接続設定を明示すると、Discordから受信した参加者音声を話者別48kHz原音で保存します。全trackのmixed音声、セッションごとのWhisper全文文字起こし・訂正文・出典付きSource記録も作ります。GPT-Liveの返答も全文に残すには `archive.captureAssistantAudio: true` を明示します（既定は `false`）。有効にすると、再生queueへ受け入れた返答音声を `kotodama-assistant` trackへ保存し、同じWhisper endpointで文字起こしします。割り込み時には既にqueueへ受け入れた短い末尾が実際の聴取範囲より長く残る場合があるため、再生receiptとは区別します。
+
+既定の `voice.transcriptSource: "live"` のまま録音できるため、GPT-Liveを通常会話の主経路にしてもリアルタイム用ローカルASRは必須ではありません。Discord受信とarchive保存はLive接続完了を待たずに始まり、接続中の入力は最大15秒分をLiveへ引き渡します。Live開始に失敗しても受信済み原音はarchiveへ残します。
+
+録音由来の全文は `archiveRoot/<session-id>/transcript.json`（Whisper原文）と `fused.json`（訂正済み・話者別）に残ります。Liveの断片文字起こしをこの全文の代用にはしません。全文には許可された参加者とGPT返答を残しますが、Intent候補の解析対象は `archive.actorId` 本人の発話だけです。他参加者やGPTの発話を本人の依頼へ変換しません。後処理済みで操作者が読める全保存セッションを一つにまとめる場合は次を実行します。
+
+```sh
+node bin/kotodama.mjs export-transcript --actor YOUR_USER_ID --output ./full-transcript.md
+node bin/kotodama.mjs read-export --actor YOUR_USER_ID --file ./full-transcript.md
+```
 
 文字起こし先は2種類から選べます。
 
 | `archive.whisperProtocol` | 送り先 | 必要なもの |
 |---|---|---|
-| `local`（既定） | ローカルのWhisper互換サービス（loopbackまたは`voice.localAsr`と同じホストのみ） | 起動済みのローカルASR endpoint |
+| `local`（既定） | ローカルのWhisper互換サービス（loopback、private LAN、またはtailnet内） | 起動済みのローカルASR endpoint |
 | `openai` | `https://api.openai.com` のtranscription API（`whisperModel`既定は `whisper-1`） | `archive.whisperApiKeyEnv` が指す環境変数のAPIキー |
 
 音声の外部送信はOpenAI公式APIへ限定します。無音だけの区間は送信せず、保存・後処理は退出後に進めるため音声会話を待たせません。詳細は [保存接続](docs/ARCHIVE-RUNTIME.md) と [アダプタ契約](docs/ARCHIVE-ADAPTER.md) を参照してください。
@@ -108,9 +117,9 @@ BotはDiscord側でも対象サーバーへ導入してください。Message Co
 
 音声会話はOpenAIの **GPT-Live 1（`gpt-live-1`）／Live API** をDiscordの音声接続につなぎます。「Discord Live API」という別のモデルAPIではありません。
 
-以下の確定テキスト待ち・commentary返却は `naturalConversation: false` の方式です。`true` ではLive内のResponses委譲で会話し、ローカルASRの完了を待ちません。
+既定の `naturalConversation: true` ではLive内のResponses委譲で自然に会話し、回答ごとに接続を作り直しません。`false` を明示した場合だけ、確定テキストをLuna analyzerで整理し、確認済みの返答を `session.commentary.append` でLiveへ戻します。
 
-`assist`は `gpt-live-1`、`minutes`のクラウド文字起こしはVADと `gpt-live-transcribe` を使います。ローカルASRも選べます。呼びかけ後は同じLiveセッションを複数ターンで再利用するため、回答ごとの接続待ちがありません。Luna analyzerが確定テキストから意図を整理し、確認済みの返答だけを `session.commentary.append` でLiveへ戻します。Liveの断片文字起こしや自発音声は仕事のSSOTになりません。
+`assist` は `gpt-live-1`、`minutes` のクラウド文字起こしはVADと `gpt-live-transcribe` を使います。リアルタイム入力にはローカルASRも選べます。Liveの断片文字起こしや自発音声は仕事や保存全文のSSOTにならず、明示依頼の実行判定と録音由来のWhisper全文は別経路です。
 
 発話中に利用者が話し始めると、Botはローカル再生と未再生queueを直ちに止め、同じセッションへ停止指示を送ります。仕事の実行はそのまま継続します。「もういいよ」などをLunaが `end_conversation` と構造化した場合はLiveだけを正常終了し、BotはVCでローカル待機へ戻ります。出力は既定120msを蓄えてから再生し、500msを超えるqueueは破棄します。値は `voice.outputPrefillMs` と `voice.maxOutputQueueMs` で調整できます。
 
@@ -146,15 +155,15 @@ pnpm check
 
 ### 会話の開始と退出
 
-呼びかけを文字起こしできない場合は、対象VCにいる操作者が `/kotodama voice mode:start_conversation` で会話を開始できます。`end_conversation` はLiveだけを終了します。無人時や退出操作ではDiscordから先に切断し、最後の確定済み入力を記録し終えます。退出後の入力から新しい仕事や返答は始めません。
+ローカルASRの `conversationStart: "wake"` で呼びかけを文字起こしできない場合は、対象VCにいる操作者が `/kotodama voice mode:start_conversation` で会話を開始できます。`end_conversation` はLiveだけを終了します。無人時や退出操作ではDiscordから先に切断し、最後の確定済み入力を記録し終えます。退出後の入力から新しい仕事や返答は始めません。
 
 担当マシン別の配備はインストール、Bot、VC、データ領域、作業領域を分け、`agentBinding` に `agentId` と `vmId` を設定します。実行中の別マシン・Bot・作業先への差し替えは接続を停止します。この設定自体は対象マシンの実在や到達性を検証するものではありません。
 
 `voice.contextCorrection` は既定で無効の試験機能です。Lunaによる短い訂正候補を原文とは別に保存します。音声で検証された訂正ではなく、話者別音声と全体音声を照合する既存の保存用パイプラインを置き換えません。
 
-対象VCで呼び名を付けずに話し始めたい場合は `voice.conversationStart: "speech"` を明示設定します。許可された操作者の入力が一定時間続いたときにLiveを開始し、接続待ちの音声も渡します。無音と短い物音は除きますが、人の声を厳密に分類する機能ではないため、継続的な雑音でも起動する可能性があります。既存の利用上限は引き続き適用されます。
+`voice.transcriptSource: "live"` の既定構成では、許可された話者の発話開始時にGPT-Liveを開きます。ローカルASRを使い、呼び名なしで始めたい場合は `voice.conversationStart: "speech"` を設定します。操作者の入力が一定時間続いたときにLiveを開始して接続待ちの音声も渡します。無音と短い物音は除きますが、人の声を厳密に分類する機能ではないため、継続的な雑音でも起動する可能性があります。既存の利用上限は引き続き適用されます。
 
-`voice.naturalConversation: true` は既存の自然会話方式を移した選択肢です。音声の応答はLiveとLunaで進め、ローカル文字起こし完了を待ちません。音声入力は20ms間隔で送信し、開始待ちのバッファを上限付きで保持します。会話終了はツール判断で行い、短い無言では終了せず、接続時間と累計利用上限は維持します。話者別のローカル原文は別経路で記録します。
+既定の `voice.naturalConversation: true` では、音声の応答はLiveとLunaで進め、ローカル文字起こし完了を待ちません。音声入力は20ms間隔で送信し、開始待ちのバッファを上限付きで保持します。会話終了はツール判断で行い、短い無言では終了せず、接続時間と累計利用上限は維持します。話者別のローカル原文は別経路で記録します。
 
 ### 夜間の通知
 

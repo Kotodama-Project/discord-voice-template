@@ -14,7 +14,7 @@ import {DiscordAdapter} from '../src/discord.mjs';
 import {voiceNotice} from '../src/consent.mjs';
 const a='100000000000000002',b='100000000000000004';
 async function fixture(t,providerFactory,{configure=()=>{},localAsrFactory}={}){
-  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-voice-'));const store=new Store(root);const config=exampleConfig();config.discord.voiceChannelId='100000000000000005';config.voice.maxDailyAudioSeconds=100;config.voice.consentMode='participant_opt_in';config.voice.apiKeyEnv='KOTODAMA_TEST_VOICE_KEY';process.env.KOTODAMA_TEST_VOICE_KEY='fixture';
+  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-voice-'));const store=new Store(root);const config=exampleConfig();config.discord.voiceChannelId='100000000000000005';config.voice.maxDailyAudioSeconds=100;config.voice.consentMode='participant_opt_in';config.voice.naturalConversation=false;config.voice.apiKeyEnv='KOTODAMA_TEST_VOICE_KEY';process.env.KOTODAMA_TEST_VOICE_KEY='fixture';
   configure(config);
   const channel={id:config.discord.voiceChannelId,guildId:config.discord.guildId,members:new Map([[a,{id:a,user:{bot:false}}],[b,{id:b,user:{bot:false}}]])};const client=new EventEmitter();client.channels={cache:new Map([[channel.id,channel]])};const sources=[];
   const room=new VoiceRoom({client,config,store,providerFactory,localAsrFactory,sourceReaders:async()=>[a,b],pipeline:{ingest:async(s,flags)=>sources.push({s,flags})}});
@@ -111,11 +111,31 @@ test('natural Live playback precedes ASR and remains bound to the original audie
   channel.members.set('100000000000000099',{id:'100000000000000099',user:{bot:false}});assert.equal(room.canPlay(room.reply),false);await room.close();
 });
 
+test('GPT Live output accepted for playback is archived as a separate assistant track',async t=>{
+  const {room,channel}=await fixture(t,provider,{configure:c=>{c.voice.naturalConversation=true;c.archive={captureAssistantAudio:true,assistantSpeakerId:'kotodama-assistant'};}});channel.members.delete(b);const archived=[];room.archive={append:(speaker,pcm,time)=>{archived.push({speaker,pcm,time});return {sessionId:'session-full'};},seal:()=>{}};const session=await room.session(a);for(let i=0;i<7;i++)session.provider.options.onAudio(Buffer.alloc(960),session.provider.sessionId,0);assert.equal(archived.length,7);assert(archived.every(item=>item.speaker==='kotodama-assistant'&&item.pcm.length===1920&&Number.isSafeInteger(item.time)));await room.close();
+});
+
 test('a natural-conversation speaker stops local playback and queued PCM immediately',async t=>{
   const {room,channel}=await fixture(t,provider,{configure:c=>{c.voice.naturalConversation=true;}});channel.members.delete(b);const session=await room.session(a);
   for(let i=0;i<7;i++)session.provider.options.onAudio(Buffer.alloc(960),session.provider.sessionId,0);assert(room.reply?.started);
   const input=new PassThrough();room.connection.receiver={subscribe:()=>input};await room.capture(a);
   assert.equal(room.reply,null);assert.equal(session.provider.interrupted,true);input.destroy();await room.close();
+});
+
+test('recording starts before GPT Live is ready and survives a failed Live start',async t=>{
+  let rejectStart,subscribed=false;const errors=[];const {room,channel}=await fixture(t,options=>({...provider(options),start:()=>new Promise((_,reject)=>{rejectStart=reject;})}));channel.members.delete(b);const archived=[];room.onError=code=>errors.push(code);room.archive={append:(speaker,pcm)=>{archived.push({speaker,pcm});return {sessionId:'session-startup'};},seal:()=>{}};const stream=new PassThrough();room.connection={state:{status:State.Ready},receiver:{subscribe:()=>{subscribed=true;return stream;}},destroy(){this.state={status:State.Destroyed};}};const work=room.capture(a);await new Promise(resolve=>setImmediate(resolve));assert(subscribed);const encoder=new OpusScript(48000,2,OpusScript.Application.AUDIO),packet=Buffer.from(encoder.encode(Buffer.alloc(3840),960));for(let i=0;i<6;i++)stream.write(packet);encoder.delete();stream.end();rejectStart(new Error('fixture Live unavailable'));await work;assert.equal(archived.length,6);assert(errors.includes('OPERATION_FAILED'));
+});
+
+test('audio received while GPT Live connects is replayed into the new Live session',async t=>{
+  let resolveStart,appended=0;const {room,channel}=await fixture(t,options=>({...provider(options),start:async function(){await new Promise(resolve=>{resolveStart=resolve;});this.active=true;},append:pcm=>{appended+=pcm.length;}}));channel.members.delete(b);const stream=new PassThrough();room.connection={state:{status:State.Ready},receiver:{subscribe:()=>stream},destroy(){this.state={status:State.Destroyed};}};const work=room.capture(a);await new Promise(resolve=>setImmediate(resolve));const encoder=new OpusScript(48000,2,OpusScript.Application.AUDIO),packet=Buffer.from(encoder.encode(Buffer.alloc(3840),960));for(let i=0;i<6;i++)stream.write(packet);encoder.delete();stream.end();resolveStart();await work;assert.equal(appended,6*960);await room.close();
+});
+
+test('Live transcript mode archives original 48k mono and links it to the fast transcript',async t=>{
+  const {room,channel,sources}=await fixture(t,options=>{const p=provider(options);p.close=async()=>{options.onFragment({id:'live-final',text:'GPT Liveで話した内容',startMs:0,endMs:120});p.active=false;};return p;});channel.members.delete(b);
+  let packets=0,seals=0;room.archive={append:(actor,pcm,time)=>{assert.equal(actor,a);assert.equal(pcm.length,1920);assert(Number.isSafeInteger(time));packets++;return {sessionId:'session-live'};},seal:()=>{seals++;}};
+  const stream=new PassThrough();room.connection={state:{status:State.Ready},receiver:{subscribe:()=>stream},destroy(){this.state={status:State.Destroyed};}};
+  await room.capture(a);const encoder=new OpusScript(48000,2,OpusScript.Application.AUDIO);const packet=Buffer.from(encoder.encode(Buffer.alloc(3840),960));for(let i=0;i<6;i++)stream.write(packet);encoder.delete();stream.end();await room.pause();
+  assert.equal(packets,6);assert.equal(seals,1);assert.equal(sources.length,1);assert.deepEqual(sources[0].s.metadata.archiveSessionRefs,['session-live']);
 });
 
 test('the receiver archives original 48k mono and links the fast transcript before leaving',async t=>{

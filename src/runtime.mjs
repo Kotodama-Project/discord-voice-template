@@ -33,7 +33,7 @@ export async function startRuntime(filename,{offline=false,analyzer,worker,runti
     if(config.archive?.enabled){
       check(voice&&config.voice.storeAudio,'ARCHIVE_RECORDING_CONFIG_REQUIRED');let failures=0,retryAt=0;
       const archivePolicy=()=>({...current,archive:{...current.archive,speakerIds:voice.audience().filter(id=>voice.allowed(id)),canProcess:!closing&&!voice.connectionReady()&&failures<3&&Date.now()>=retryAt}});
-      archive=new ArchiveRuntime({config:archivePolicy(),policy:archivePolicy,store,analyzer:selectedAnalyzer,authorize:b=>b.readers.every(id=>current.discord.operators.includes(id))&&b.speakerIds.every(id=>voice.allowed(id)),onUsage:usage=>store.event('archive.model_usage',usage),onError:code=>{if(code==='ARCHIVE_SCOPE_REVOKED'&&voice.connectionReady())return;failures++;retryAt=Date.now()+60000;log({event:'archive',code,failures});}});
+      archive=new ArchiveRuntime({config:archivePolicy(),policy:archivePolicy,store,analyzer:selectedAnalyzer,authorize:b=>b.readers.every(id=>current.discord.operators.includes(id))&&b.speakerIds.every(id=>current.archive?.captureAssistantAudio===true&&id===current.archive.assistantSpeakerId||voice.allowed(id)),onUsage:usage=>store.event('archive.model_usage',usage),onError:code=>{if(code==='ARCHIVE_SCOPE_REVOKED'&&voice.connectionReady())return;failures++;retryAt=Date.now()+60000;log({event:'archive',code,failures});}});
       voice.archive=archive;archiveTimer=setInterval(()=>{void archive.processPending().catch(()=>{if(voice.connectionReady())return;failures++;retryAt=Date.now()+60000;log({event:'archive',code:'ARCHIVE_PROCESSING_FAILED',failures});});},10000);archiveTimer.unref();
     }
     voice?.control.start();
