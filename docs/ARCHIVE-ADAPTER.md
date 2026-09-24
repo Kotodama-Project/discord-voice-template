@@ -32,7 +32,7 @@ journal内のPCMは後処理再開用staging。実sinkの`verify`で全保存音
 
 `createArchiveSink({archiveRoot,ffmpeg,authorize,timeoutMs,maxEncodedBytes,maxPcmBytes,clock})`は既存のrecordings rootを必須にし、その直下へ`session-*`を作る。原音は`mixed.pcm`/speaker別`.pcm`とMP3。ffmpegは既存実行器でshellなし・時間/出力上限付き。metadata/speakers/sourceChunks/receiptを同期保存後renameする。失敗stagingは調査用に残し、任意pathを削除しない。hostが既存の保持/失敗staging回収の対象へ登録すること。
 
-既存30日raw-retentionは`metadata.json.endedAt`、`transcript.json.status=succeeded`、hash付き`knowledge-source-transcript-*.json`、`.ct202-local-grant-<session>.json.artifact_manifest`を読む。このsinkは同名manifestにPCM/MP3のref/size/sha256を記録するが、schemaはretention manifest、`authorityGranted:false`であり転送grantを偽造しない。CT202送信権限はauthorizeで別に判断する。hostは既存保持policy `kotodama.voice-retention/v2`（rawAudioDays=30、transcriptDays/derivedTextDays=null）へ同rootを設定する。既存retentionは文字起こし成功を確認できない場合削除を止めるため、ASRが永続失敗した録音と失敗stagingは保持ownerが別途処理する必要がある。このadapterだけで保持処理が稼働したとはしない。
+既存30日raw-retentionは`metadata.json.endedAt`、`transcript.json.status=succeeded`、hash付き`knowledge-source-transcript-*.json`、`.ct202-local-grant-<session>.json.artifact_manifest`を読む。このsinkは同名manifestにPCM/MP3のref/size/sha256を記録するが、schemaはretention manifest、`authorityGranted:false`であり転送grantを偽造しない。private transcribe endpointへの送信権限はauthorizeで別に判断する。hostは既存保持policy `kotodama.voice-retention/v2`（rawAudioDays=30、transcriptDays/derivedTextDays=null）へ同rootを設定する。既存retentionは文字起こし成功を確認できない場合削除を止めるため、ASRが永続失敗した録音と失敗stagingは保持ownerが別途処理する必要がある。このadapterだけで保持処理が稼働したとはしない。
 
 `createWhisperArchiveAsr({sink,endpoint,authorize,language,timeoutMs,protocol,model,apiKeyEnv})`は検証済みMP3を、privateなローカルWhisper互換endpointへmultipart `audio`/`language`で送るか、OpenAI公式transcription APIへmultipart `file`/`model`/`response_format=verbose_json`で送る。OpenAIのBearer keyは指定環境変数から呼出時に読む。redirect拒否・response 8MiB上限・timeout。区間start/end/textを保持し、segmentsが省略された全文textも区間全体として保持する。idxは応答順、confidenceはexp(avg_logprob)、欠落時は0.8。個別speakerの名乗り不一致は拒否する。
 
@@ -44,6 +44,6 @@ encoder失敗は同一idempotencyKeyのstagingを残して停止し、次回も�
 
 ## 確認範囲
 
-合成試験で最後のsample、共通時刻、mixed overlap、再送、誤話者、訂正時刻、再起動再開、取消、上限を検査。実ffmpeg、実HTTP fixture、CLIモデルfixture、既存Storeを通して原音保存→journal PCM解放→後処理再起動→Intent記録を検査する。既存CT200 sourceをread-only確認して契約を参照した新規MIT候補。既存private sourceを丸ごと移植していない。実CT202/Luna応答、音声の実聴、retentionの本番削除、分散排他、public Task ownerへの実配線は未受入。rootの統合・配備作業が必要。
+合成試験で最後のsample、共通時刻、mixed overlap、再送、誤話者、訂正時刻、再起動再開、取消、上限を検査。実ffmpeg、実HTTP fixture、CLIモデルfixture、既存Storeを通して原音保存→journal PCM解放→後処理再起動→Intent記録を検査する。既存の private source をread-only確認して契約を参照した新規MIT候補。既存private sourceを丸ごと移植していない。実 transcribe endpoint/Luna応答、音声の実聴、retentionの本番削除、分散排他、public Task ownerへの実配線は未受入。rootの統合・配備作業が必要。
 
 既存のraw-retention実装を合成sessionに対して実行し、29日目は削除対象0、31日目はPCM/MP3の6ファイルだけ削除、text削除0、再実行削除0を確認した。認証grantを発行した試験ではない。
