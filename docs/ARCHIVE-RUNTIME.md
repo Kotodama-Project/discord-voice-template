@@ -59,7 +59,7 @@ archive.stopCapture();
 await archive.close();
 ```
 
-必須の通常configは`installation`、`agentBinding.agentId/vmId`、`discord.guildId/voiceChannelId/operators`、`voice.participantIds`、`analyzer`、`worker.workspace`、`dataDir`、`owner.kind=local`。archive.actorIdはoperatorsに含め、readersはactorを含む。既定の`captureAssistantAudio:true`では、参加者IDと重複しない`assistantSpeakerId`をGPT-Live返答trackに使う。このIDは参加者の音声処理・資料閲覧・実行権限を付与しない。policyは同じconfig形状を返し、現在のspeaker/readers/actor・保存先・保持policy・source・VM/agentを再照合する。`authorize`は同期booleanで、Promiseを権限として認めない。30日保持の既存owner登録もrootが行う。
+必須の通常configは`installation`、`agentBinding.agentId/vmId`、`discord.guildId/voiceChannelId/operators`、`voice.participantIds`、`analyzer`、`worker.workspace`、`dataDir`、`owner.kind=local`。archive.actorIdはoperatorsに含め、readersはactorを含む。`captureAssistantAudio`は既定で`false`。`true`を明示した場合は、数字だけでなく、参加者・operators・readers・actorIdのどれとも重複しない`assistantSpeakerId`をGPT-Live返答trackに使う（`mixed`も不可）。このIDは参加者の音声処理・資料閲覧・実行権限を付与しない。policyは同じconfig形状を返し、現在のspeaker/readers/actor・保存先・保持policy・source・VM/agentを再照合する。`authorize`は同期booleanで、Promiseを権限として認めない。30日保持の既存owner登録もrootが行う。
 
 Responses訂正はconfig.analyzerのkind=responses/model=gpt-5.6-luna/apiKeyEnv/baseUrl/timeoutSeconds/maxOutputTokensを再利用。API keyは呼出時にreadEnvで読む。strict JSON、reasoning low、store false、retry0、truncation disabled、出力256〜8000tokensの上限。SDKfixtureで検証し実API利用はしていない。CLI設定の場合は既存CLI経路も保持する。
 

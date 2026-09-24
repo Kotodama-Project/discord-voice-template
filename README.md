@@ -73,9 +73,9 @@ BotはDiscord側でも対象サーバーへ導入してください。Message Co
 
 ## 録音と全文文字起こし
 
-`voice.storeAudio: true` と `archive` の接続設定を明示すると、Discordから受信した参加者音声を話者別48kHz原音で保存します。`archive.captureAssistantAudio` の既定値は `true` で、GPT-Liveから再生queueへ受け入れた返答音声も `kotodama-assistant` trackへ保存し、全trackのmixed音声、セッションごとのWhisper全文文字起こし・訂正文・出典付きSource記録を作ります。割り込み時には既にqueueへ受け入れた短い末尾が実際の聴取範囲より長く残る場合があるため、再生receiptとは区別します。
+`voice.storeAudio: true` と `archive` の接続設定を明示すると、Discordから受信した参加者音声を話者別48kHz原音で保存します。全trackのmixed音声、セッションごとのWhisper全文文字起こし・訂正文・出典付きSource記録も作ります。GPT-Liveの返答も全文に残すには `archive.captureAssistantAudio: true` を明示します（既定は `false`）。有効にすると、再生queueへ受け入れた返答音声を `kotodama-assistant` trackへ保存し、同じWhisper endpointで文字起こしします。割り込み時には既にqueueへ受け入れた短い末尾が実際の聴取範囲より長く残る場合があるため、再生receiptとは区別します。
 
-既定の `voice.transcriptSource: "live"` のまま録音できるため、GPT-Liveを通常会話の主経路にしてもリアルタイム用ローカルASRは必須ではありません。Discord受信とarchive保存はLive接続完了を待たずに始まり、接続中の入力は最大15秒分をLiveへ引き渡します。Live開始に失敗しても受信済み原音はarchiveへ残します。GPT返答の原音保存を行わない場合だけ `archive.captureAssistantAudio: false` を明示します。
+既定の `voice.transcriptSource: "live"` のまま録音できるため、GPT-Liveを通常会話の主経路にしてもリアルタイム用ローカルASRは必須ではありません。Discord受信とarchive保存はLive接続完了を待たずに始まり、接続中の入力は最大15秒分をLiveへ引き渡します。Live開始に失敗しても受信済み原音はarchiveへ残します。
 
 録音由来の全文は `archiveRoot/<session-id>/transcript.json`（Whisper原文）と `fused.json`（訂正済み・話者別）に残ります。Liveの断片文字起こしをこの全文の代用にはしません。全文には許可された参加者とGPT返答を残しますが、Intent候補の解析対象は `archive.actorId` 本人の発話だけです。他参加者やGPTの発話を本人の依頼へ変換しません。後処理済みで操作者が読める全保存セッションを一つにまとめる場合は次を実行します。
 

@@ -122,7 +122,7 @@ export class VoiceRoom {
     if(this.reply&&!this.policy().voice.naturalConversation)void this.stopSpeech();
     if(this.localAsr)return this.captureLocal(actor);if(this.liveCaptures.has(actor))return;
     const connection=this.connection,decoder=new OpusScript(48000,2,OpusScript.Application.AUDIO),stream=connection.receiver.subscribe(actor,{end:{behavior:EndBehaviorType.AfterSilence,duration:this.config.voice.vadSilenceMs}}),archiveRefs=new Set(),pending=[];let pendingBytes=0,s=null,turn=null,providerBytes=0,ended=false,cancelled=false,providerEnded=false,starting=true,bufferWarned=false,stopProvider;
-    const finishProvider=()=>{if(providerEnded||!s)return;providerEnded=true;if(s.stream===stream)s.stream=null;if(s.finishInput===stopProvider)s.finishInput=null;turn.archiveSessionRefs=[...archiveRefs];if(providerBytes>=4800&&s.provider.active){if(s.mode==='minutes')s.provider.commit({id:turn.id,startMs:turn.startMs,endMs:s.ms});else s.turns.end(turn,s.ms);}};
+    const finishProvider=()=>{if(providerEnded||!s)return;providerEnded=true;if(s.stream===stream)s.stream=null;if(s.finishInput===stopProvider)s.finishInput=null;if(!turn)return;turn.archiveSessionRefs=[...archiveRefs];if(providerBytes>=4800&&s.provider.active){if(s.mode==='minutes')s.provider.commit({id:turn.id,startMs:turn.startMs,endMs:s.ms});else s.turns.end(turn,s.ms);}};
     const finish=()=>{if(ended)return;ended=true;if(this.liveCaptures.get(actor)===capture)this.liveCaptures.delete(actor);decoder.delete();finishProvider();};
     const capture={stream,stop:()=>{cancelled=true;stream.destroy();finish();}};this.liveCaptures.set(actor,capture);
     stream.on('data',packet=>{
