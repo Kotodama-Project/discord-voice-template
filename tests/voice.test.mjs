@@ -67,7 +67,7 @@ test('a synchronous SDK failure is classified without exposing its diagnostic',a
   await assert.rejects(p.start(),{code:'VOICE_PROVIDER_FAILED',message:'VOICE_PROVIDER_FAILED'});assert.deepEqual(notifications,['VOICE_PROVIDER_FAILED']);
 });
 
-test('CT200 natural frontend speaks without waiting for a local transcript result',async()=>{
+test('natural frontend speaks without waiting for a local transcript result',async()=>{
   const audio=[];let parked=0;const p=new VoiceProvider({mode:'assist',apiKey:'synthetic-test',sdk,naturalConversation:true,onAudio:b=>audio.push(b),onPark:()=>parked++});await p.start();
   const session=Live.last.sent[0].session;assert.equal(session.delegation.type,'responses');assert.equal(session.delegation.responses.model,'gpt-5.6-luna');assert.equal(session.delegation.responses.max_output_tokens,800);
   Live.last.emit('event',{type:'session.output_audio.delta',delta:Buffer.alloc(960).toString('base64')});assert.equal(audio.length,1);

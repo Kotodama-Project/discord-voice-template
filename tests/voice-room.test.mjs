@@ -54,12 +54,12 @@ test('owner-managed privacy scope needs no participant click but preserves expli
 test('a live privacy-policy change invalidates the old input session without inventing new opt-in',async t=>{const {room,config,channel}=await fixture(t,provider);channel.members.delete(b);const old=await room.session(a);assert(room.current(old));config.voice.consentMode='owner_managed';config.voice.participantIds=[a];assert(room.allowed(a));assert.equal(room.current(old),false);await room.pause();await room.resume();const next=await room.session(a);assert.equal(next.privacyBasis,'owner_managed');assert(room.current(next));assert.equal(old.provider.active,false);});
 
 test('local Japanese transcripts stay authoritative and open one Live session only after a typo-tolerant wake phrase',async t=>{
-  const transcripts=['今日は雑談です','ことたま、CT200の状態を教えて','それで負荷はどう？'],providers=[];
+  const transcripts=['今日は雑談です','ことたま、サーバーの状態を教えて','それで負荷はどう？'],providers=[];
   const {room,channel,sources}=await fixture(t,options=>{const p=provider(options);p.appended=0;p.append=()=>p.appended++;providers.push(p);return p;},{configure:config=>{config.voice.transcriptSource='local';config.voice.localAsr={url:'http://127.0.0.1:9000/v1/audio/transcriptions',model:'tiny',language:'ja',timeoutSeconds:20,maxUtteranceSeconds:30};},localAsrFactory:()=>({transcribe:async()=>transcripts.shift()})});
   channel.members.delete(b);const streams=[];room.connection.receiver={subscribe:()=>streams.shift()};const encoder=new OpusScript(48000,2,OpusScript.Application.AUDIO),packet=Buffer.from(encoder.encode(Buffer.alloc(3840),960));encoder.delete();
   const utter=async()=>{const stream=new PassThrough();streams.push(stream);await room.capture(a);for(let i=0;i<6;i++)stream.write(packet);stream.end();await new Promise(resolve=>setImmediate(resolve));await Promise.allSettled([...room.draining]);};
   await utter();assert.equal(providers.length,0);assert.equal(sources[0].s.text,'今日は雑談です');assert.deepEqual(sources[0].flags,{execute:false,reply:false,analyze:false});assert.equal(sources[0].s.metadata.transcriptOrigin,'local_asr');
-  await utter();assert.equal(providers.length,1);assert.equal(providers[0].options.initialHistory[0].text,'ことたま、CT200の状態を教えて');assert.deepEqual(sources[1].flags,{execute:true,reply:true,analyze:true});
+  await utter();assert.equal(providers.length,1);assert.equal(providers[0].options.initialHistory[0].text,'ことたま、サーバーの状態を教えて');assert.deepEqual(sources[1].flags,{execute:true,reply:true,analyze:true});
   await utter();assert.equal(providers.length,1);assert.deepEqual(sources[2].flags,{execute:true,reply:true,analyze:true});assert(providers[0].appended>0);
 });
 

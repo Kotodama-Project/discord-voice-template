@@ -6,6 +6,7 @@ async function walk(dir){for(const entry of await readdir(dir,{withFileTypes:tru
   if(/\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b/.test(text))errors.push(relative+': secret-shaped token');
   if(/Bearer\s+[a-f0-9]{32,}/i.test(text))errors.push(relative+': bearer value');
   if(/(?:C:[\\/]Users[\\/]|\/home\/openclaw\/|tail[a-z0-9]+\.ts\.net)/i.test(text))errors.push(relative+': private installation path');
+  if(/(?<![A-Za-z0-9])(?:CT|VM)\d{3}(?![A-Za-z0-9])/.test(text))errors.push(relative+': private host identifier');
 }}
 await walk(root);const pkg=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));if(pkg.license!=='MIT')errors.push('package license mismatch');if(!(await readFile(path.join(root,'LICENSE'),'utf8')).startsWith('MIT License'))errors.push('LICENSE mismatch');
 console.log(JSON.stringify({status:errors.length?'FAIL':'PASS',checked,errors}));if(errors.length)process.exitCode=1;

@@ -1,6 +1,6 @@
 import {check} from './common.mjs';
 
-// CT200 Peer.pump_audio's 20 ms PCM cadence, with bounded startup buffering.
+// Ported from the private Live runtime's Peer.pump_audio 20 ms PCM cadence, with bounded startup buffering.
 export class LiveAudioClock {
   constructor(send,{now=()=>performance.now(),onError=()=>{}}={}){this.send=send;this.now=now;this.onError=onError;this.chunks=[];this.bytes=0;this.offset=0;}
   append(pcm){check(this.bytes+pcm.length<=480000,'VOICE_INPUT_QUEUE_LIMIT');this.chunks.push(pcm);this.bytes+=pcm.length;}

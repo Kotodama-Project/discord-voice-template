@@ -1,6 +1,6 @@
 import {check} from './common.mjs';
 
-// Port of the CT200 policy.StreamedToolCalls contract. Completed items can be
+// Port of the private Live runtime's policy.StreamedToolCalls contract. Completed items can be
 // absent from response.completed.output, and duplicate events must not rerun tools.
 export class LiveResponseCalls {
   constructor(){this.pending=new Map();this.finished=new Set();this.current=null;}

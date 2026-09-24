@@ -15,6 +15,6 @@ PRの存在やCI成功を、その機能の実運用成功とは扱いません�
 
 使用するライブラリはpackage.jsonとpnpm-lock.yamlで固定します。依存関係のライセンスは各packageのLICENSEと公開時の第三者表示に従います。既存Kotodama本体のMITへの整理は、出典・寄与者・第三者条件を確認した別の変更として扱います。
 
-## CT200 Live runtime adaptation
+## Private Live runtime adaptation
 
-The optional natural conversation path ports the existing CT200 Live runtime's Responses delegation, streamed function-call completion and deduplication, 20 ms paced PCM input, and tool-controlled conversation ending. Its original regression contracts remain the comparison baseline; the public implementation contains no deployment configuration, private notes, credentials, or recorded conversation. Local transcription remains independent evidence. The existing speaker/mixed archival fusion pipeline is a separate integration requirement; a text-only correction candidate is not its replacement.
+The optional natural conversation path ports the existing private Live runtime's Responses delegation, streamed function-call completion and deduplication, 20 ms paced PCM input, and tool-controlled conversation ending. Its original regression contracts remain the comparison baseline; the public implementation contains no deployment configuration, private notes, credentials, or recorded conversation. Local transcription remains independent evidence. The existing speaker/mixed archival fusion pipeline is a separate integration requirement; a text-only correction candidate is not its replacement.
