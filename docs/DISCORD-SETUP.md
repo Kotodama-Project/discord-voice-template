@@ -162,7 +162,7 @@ Live会話の設定を保ったまま、絶対path・ID・保持policyを自分�
 }
 ```
 
-ローカルWhisperを使う場合は `whisperProtocol` を `local`、`whisperEndpoint` をloopback/private LAN/tailnet内の互換endpointへ変更し、`whisperApiKeyEnv` は削除します。参加者track、既定のGPT-Live assistant track、mixed、Whisper原文、時系列の訂正文が保存されます。後処理済みの全文は `export-transcript` で一つのファイルへ出力できます。
+ローカルWhisperを使う場合は `whisperProtocol` を `local`、`whisperEndpoint` をloopback/private LAN/tailnet内の互換endpointへ変更し、`whisperApiKeyEnv` は削除します。参加者track、mixed、Whisper原文、時系列の訂正文が保存されます。上の例のように `captureAssistantAudio: true` を明示した場合は、GPT-Live assistant trackも保存されます。後処理済みの全文は `export-transcript` で一つのファイルへ出力できます。
 
 自然会話内のbackendは現在 `gpt-5.6-luna`、low reasoning、出力800tokenに固定です。別経路の `analyzer.model` や `analyzer.maxOutputTokens` を変更してもこの値は変わりません。GPT-Live 1とLunaの利用権限を持つ `OPENAI_API_KEY` を実行ホストへ用意します。APIキーは付属しません。
 
