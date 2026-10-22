@@ -72,3 +72,13 @@ test('queued stale voice revisions never analyze and the same turn replay never 
   await pipeline.ingest(source(),{},{waitForAnalysis:false});const correction=source({revision:2,text:'訂正です'});await pipeline.ingest(correction,{},{waitForAnalysis:false});await pipeline.ingest(correction,{},{waitForAnalysis:false});
   release();await Promise.allSettled([...pipeline.analysis.values()]);assert.deepEqual(calls,['blocking:1','utterance-1:2']);assert.equal(store.tasks(actor).length,0);await pipeline.close();
 });
+
+test('provisional sources remain saved but never enter analyzer or worker context until a final correction',async t=>{
+  const {store,config,source}=await fixture(t);config.worker.actions=['write_file'];const contexts=[];
+  const pipeline=new Pipeline({store,config,analyzer:{analyze:async(_source,context)=>{contexts.push(context);return {...analysis,intents:[{kind:'request',title:'資料',request:'資料を作って',action:'write_file',explicit:true,complete:true,acceptance:['資料がある']}]};}},worker:{run:async(_task,context)=>{contexts.push(context);return {state:'needs_review',summary:'synthetic',artifacts:[]};}}});
+  const provisional=source({sourceId:'tentative',text:'まだ確定していない文',final:false});await pipeline.ingest(provisional,{execute:true});
+  const current=source({sourceId:'confirmed-request'});await pipeline.ingest(current,{execute:true});await pipeline.tail;
+  assert.equal(contexts.length,2);assert(contexts.every(context=>!context.some(item=>item.text===provisional.text)));const saved=store.sources(actor).find(item=>item.sourceId==='tentative');assert.equal(saved.final,false);assert.equal(saved.text,provisional.text);
+  await pipeline.ingest({...provisional,revision:2,text:'確定した訂正文',final:true},{analyze:false});const nextContext=pipeline.context({...current,key:store.sources(actor).find(item=>item.sourceId==='confirmed-request').key},actor);assert(nextContext.some(item=>item.key===saved.key&&item.revision===2&&item.text==='確定した訂正文'));
+  assert.equal(JSON.parse(store.db.prepare('SELECT body FROM source_versions WHERE key=? AND revision=1').get(saved.key).body).text,provisional.text);await pipeline.close();
+});

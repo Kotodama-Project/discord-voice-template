@@ -9,7 +9,7 @@ export class Pipeline {
   context(source,principal){
     const config=this.config.analyzer,maxSources=config.maxContextSources??12;let remaining=config.maxContextChars??24000;
     const result=[],time=s=>Date.parse(s.metadata?.createdAt??'')||0;
-    const room=this.store.sources(principal).filter(s=>s.guildId===source.guildId&&s.channelId===source.channelId&&s.key!==source.key);
+    const room=this.store.sources(principal).filter(s=>s.final===true&&s.guildId===source.guildId&&s.channelId===source.channelId&&s.key!==source.key);
     const archived=new Set(room.filter(s=>s.metadata?.kind==='archived_voice').map(s=>s.metadata.sessionId));
     const candidates=room.filter(s=>{const refs=s.metadata?.archiveSessionRefs;return !refs?.length||!refs.every(id=>archived.has(id));}).sort((a,b)=>time(a)-time(b)||a.revision-b.revision||a.key.localeCompare(b.key)).slice(-maxSources).reverse();
     for(const s of candidates){if(remaining<=0)break;const text=s.text.slice(0,Math.min(12000,remaining));remaining-=text.length;result.unshift({key:s.key,revision:s.revision,text,actorId:s.actorId});}return result;
