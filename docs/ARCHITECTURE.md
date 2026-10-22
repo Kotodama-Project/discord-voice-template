@@ -1,10 +1,14 @@
 # 構成
 
-Discordのテキスト・音声 → 出典と版 → 意図・ToDo → 明示依頼 → CLI実行器 → 検証済み成果。
+Discordのテキスト・音声 → 出典と版 → 意図・ToDo → 明示依頼 → Codex App Server → sandbox内の作業・検証 → 成果。
 
 既定の `assist` / `naturalConversation: true` は発話開始時にGPT-Live会話を開き、その話者との複数ターンで同じWebSocketを使います。GPT-Liveは自然会話を担当し、Luna backendは状態・資料・終了判断などを委譲で扱います。`naturalConversation: false` ではLunaの確認済み結果を同じLiveセッションのcommentaryへ返します。`minutes` はVADと専用文字起こしを使い、音声を返しません。いずれも意図抽出器とTask ownerへの明示依頼経路は会話出力から分離します。
 
 `voice.transcriptSource: "live"` はGPT-Liveの入力transcriptを低遅延会話に使います。`"local"` ではDiscordの話者別PCMをローカルASRへ渡し、その確定した日本語テキストをSource Evidenceにします。呼びかけ前の発話は保存だけを行い、Live・Luna・Task実行を開始しません。呼びかけ時は確定テキストをLiveの開始履歴へ入れ、その後の音声は同じ話者のLiveセッションへ流します。どちらを選んでも、録音を有効にすれば別の48kHz archive経路へ原音を送り、Live transcript deltaをWhisper全文の代用にはしません。
+
+新規設定の `voice.transcriptSource: "openai"` は話者別の確定WAVを公式ASRへ渡します。GPT-Liveの会話とは別に、確定した依頼を解析・実行します。Liveの暫定文は保存・表示だけに用います。文字起こしは保存直後に現在のreaderへDMで返し、解析完了を待ちません。解析はroom順序を守り、実行中を含め最大8件に制限します。表示・解析・実行・配送は出典の版と停止状態をそれぞれ照合します。
+
+App ServerのthreadはTaskへ対応付けて保存し、訂正で再利用します。API認証は隔離homeの一時認証、契約ログインは明示的な専用homeを使います。結果不明のturnを自動で再投入しません。モデルのツールと検証コマンドは同じworkspace sandboxに限定します。独自の協調実行器は作らず、Codexのmulti-agentへ委ねます。
 
 単体構成はNode.jsとSQLiteで動きます。組織構成ではremote Task ownerを選びます。
 

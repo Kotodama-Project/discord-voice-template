@@ -56,17 +56,17 @@ node tools/discord-setup.mjs invite --app YOUR_NEW_APPLICATION_ID --guild YOUR_G
 node bin/kotodama.mjs init --app YOUR_NEW_APPLICATION_ID --guild YOUR_GUILD_ID --operator YOUR_USER_ID --channel YOUR_TEXT_CHANNEL_ID --workspace /path/to/your/repository
 ```
 
-## 4. 仕事を実行するCodex CLIへログインする
+## 4. OpenAIの認証を接続する
 
-DiscordのBot認証と、仕事を実行するCodex CLIの認証は別です。既存ログインが有効なら再利用します。401や `CODEX_LOGIN_REQUIRED` が出た場合は、自動でログインを繰り返さず、本人が認証します。
+新規設定は `OPENAI_API_KEY` を音声・意図整理・App Server実行で利用します。キーは信頼する実行ホストの環境変数へ設定します。App Serverは専用の一時認証でキーを使い、個人のCodexログインを書き換えません。
 
-専用の認証保存先を使う場合は、private設定の `analyzer.codexHome` と `worker.codexHome` に同じprivate directoryを指定し、本人のターミナルで次を実行します。
+仕事の実行だけChatGPT契約を使う場合は `worker.apiKeyEnv` を削除し、`worker.codexHome` に専用のprivate directoryを指定します。そこに有効なログインがあれば再利用し、必要な場合だけ本人のターミナルで実行します。
 
 ```sh
 node tools/codex-login.mjs --config .kotodama/config.json
 ```
 
-表示されたURLを本人が開き、本人がコードを入力します。エージェントはその操作を代行せず、完了後に実際のモデル応答まで確認します。音声APIの認証・利用上限も別途設定します。[公式の認証手順](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)。
+表示されたURLを本人が開いて認証します。401時に別の課金方式へ自動で切り替えません。音声とResponses APIにはAPIキーが別途必要です。[モデルと認証](MODELS.md)、[App Server設定](CODEX-APP-SERVER.md)を参照してください。
 
 ## 5. 接続を確認する
 

@@ -54,5 +54,5 @@ export async function loadConfig(filename) {
   return config;
 }
 export function exampleConfig({guildId='100000000000000001',applicationId,operatorId='100000000000000002',channelId='100000000000000003',workspace='.'}={}) {
-  return Config.parse({version:1,installation:'my-kotodama',discord:{guildId,applicationId,textChannelIds:[channelId],resultChannelId:channelId,operators:[operatorId]},voice:{consentMode:'owner_managed',participantIds:[operatorId],transcriptSource:'openai'},analyzer:{kind:'responses'},worker:{kind:'codex_app_server',apiKeyEnv:'OPENAI_API_KEY',executable:'codex',model:'gpt-5.6-luna',workspace}});
+  return Config.parse({version:1,installation:'my-kotodama',discord:{guildId,applicationId,textChannelIds:[channelId],resultChannelId:channelId,operators:[operatorId]},voice:{consentMode:'owner_managed',participantIds:[operatorId],transcriptSource:'openai',conversationStart:'speech'},analyzer:{kind:'responses'},worker:{kind:'codex_app_server',apiKeyEnv:'OPENAI_API_KEY',executable:'codex',model:'gpt-5.6-luna',workspace}});
 }
