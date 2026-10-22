@@ -1,12 +1,28 @@
 import {DatabaseSync} from 'node:sqlite';
-import {mkdirSync} from 'node:fs';
+import {existsSync,mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {check,digest,sourceIdentity,sourceFingerprint,uid} from './common.mjs';
+
+function checkExistingStore(filename){
+  if(!existsSync(filename))return;
+  // Inspect before writable open, journal changes or schema initialization.
+  // These known legacy markers are a refusal boundary, not a schema migration.
+  const db=new DatabaseSync(filename,{readOnly:true});
+  try{
+    const legacy=db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND lower(name) IN ('analysis_records','analysis_usage','external_submissions','meeting_jobs','meeting_delivery_attempts') LIMIT 1").get();
+    check(!legacy,'STORE_MIGRATION_REQUIRED');
+    if(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND lower(name)='tasks'").get()){
+      const unsupported=db.prepare("SELECT 1 FROM tasks WHERE state IS NULL OR state NOT IN ('queued','running','stopping','cancelled','failed','uncertain','needs_review','stale') LIMIT 1").get();
+      check(!unsupported,'STORE_MIGRATION_REQUIRED');
+    }
+  }finally{db.close();}
+}
 
 export class Store {
   constructor(dataDir) {
     mkdirSync(dataDir,{recursive:true,mode:0o700});
-    this.db=new DatabaseSync(path.join(dataDir,'kotodama.sqlite'));
+    const filename=path.join(dataDir,'kotodama.sqlite');checkExistingStore(filename);
+    this.db=new DatabaseSync(filename);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS sources(key TEXT PRIMARY KEY, revision INTEGER NOT NULL, fingerprint TEXT NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS source_versions(key TEXT NOT NULL, revision INTEGER NOT NULL, fingerprint TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(key,revision));
