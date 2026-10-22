@@ -17,3 +17,17 @@ test('Responses analyzer uses Luna with strict intent output and no provider sto
 });
 
 test('Responses analyzer classifies provider errors without exposing their body',async t=>{process.env.KOTODAMA_TEST_ANALYZER_KEY='synthetic';t.after(()=>delete process.env.KOTODAMA_TEST_ANALYZER_KEY);class Client{constructor(){this.responses={create:async()=>{throw {status:500,error:{message:'private provider diagnostic'}};}}}}const config=exampleConfig();config.analyzer={kind:'responses',model:'gpt-5.6-luna',apiKeyEnv:'KOTODAMA_TEST_ANALYZER_KEY',baseUrl:'https://api.openai.com/v1',timeoutSeconds:30};await assert.rejects(new ResponsesAnalyzer(config,{sdk:{OpenAI:Client}}).analyze({text:'x'},[]),{code:'MODEL_API_FAILED',message:'MODEL_API_FAILED'});});
+
+test('strict Responses correction output can refer to the existing Task without inventing a new identity',async t=>{
+  process.env.KOTODAMA_TEST_ANALYZER_KEY='synthetic';t.after(()=>delete process.env.KOTODAMA_TEST_ANALYZER_KEY);
+  const task={id:'task-existing',title:'既存の仕事',request:'元の条件',state:'needs_review'};
+  class Client{constructor(){this.responses={create:async request=>{
+    const item=request.text.format.schema.properties.intents.items;
+    assert(item.required.includes('targetTaskId'));assert.deepEqual(item.properties.targetTaskId.type,['string','null']);
+    assert(request.input.includes(JSON.stringify(task)));
+    return {status:'completed',output_text:JSON.stringify({summary:'訂正',intents:[{kind:'request',title:task.title,request:'新しい条件',action:'develop',targetTaskId:task.id,explicit:true,complete:true,acceptance:['新条件を満たす']}],replyRequested:false,reply:'',voiceAction:'none'})};
+  }};}}
+  const config=exampleConfig();config.analyzer={...config.analyzer,apiKeyEnv:'KOTODAMA_TEST_ANALYZER_KEY'};
+  const result=await new ResponsesAnalyzer(config,{sdk:{OpenAI:Client}}).analyze({text:'さっきの仕事を新しい条件へ直して'},[],{tasks:[task]});
+  assert.equal(result.intents[0].targetTaskId,task.id);
+});
