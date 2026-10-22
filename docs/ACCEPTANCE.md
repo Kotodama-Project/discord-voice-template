@@ -10,13 +10,16 @@
 | App Server | thread/worktree再利用、訂正前成果の配送、取消、送信不明時の再投入防止、認証分離のfixture。Linuxの実Codex 0.163.0で領域内write成功・外側/tmp/network拒否 | 実Discordを含む一周、実案件での協調 |
 | 既存キーのAPI接続 | 公式モデル一覧、短いResponses疎通に加え、製品のstrict schemaで合成依頼1回を解析しTaskを作成 | 実会話の意図判定品質 |
 | `gpt-transcribe` | 2.086秒の合成英語音声を1回送信、HTTP 200、期待文と一致、応答1.507秒 | 日本語実音声・Discord音声・長時間・複数人 |
-| 移行 | 新規OpenAI設定、CLI/既存wake設定の互換と旧fallback拒否を検証 | 稼働Bot切替、旧記録/Task owner移行、旧サービス停止 |
+| 移行 | 新規OpenAI設定、CLI/既存wake設定の互換と旧fallback拒否を検証 | 稼働Bot切替、共有チャンネル配送・VCと仕事部屋の文脈統合、旧記録/Task owner移行、旧サービス停止 |
+| 旧データの誤使用防止 | 既知の旧テーブル・非対応のTask状態を更新前に拒否。13件のfixtureでDB/WAL内容の保持、公開版の再起動と通知待ち・送信不明の保持を検証 | 実際の旧DBの分類・変換・移行 |
 
 実パイプライン検証では製品source `d43b211`、Codex `0.163.0`、`gpt-5.6-luna` を使用しました。合成の依頼を実Responses analyzerで1回解析し、Taskを作成。同じTaskを再開してApp Serverの実生成turnを1回実行（17.816秒）し、`add.mjs` の修正と `deliverables/result.md` の作成を確認しました。設定済み `node --test` はsandbox内でexit 0、元のsource repositoryとtestは不変、成果hashと配送用attachmentのbytesは一致しました。最初の検証用引数の設定失敗はturn開始前と確認し、解析を繰り返さず既存Taskを再開しています。実Discordへの送信はしていません。
 
 キーのMac転送、秘密値の出力、新規キー発行、既存Bot変更は行っていません。App Server単体のsandboxはhostの全読取りを隔離するcontainerではありません。
 
 現行の製品受入は[Issue #3](https://github.com/Kotodama-Project/discord-voice-template/issues/3)で追跡します。下記の2026-09の実Discord/CLI実績を、新しいApp Server構成の受入へ繰り上げません。
+
+旧共有Botの設定・ソースとの比較では、チャンネル配送、チャンネル単位の参加者範囲、共有文書、会議の配送待ち記録が現行版と異なります。旧DBは開いておらず、共通するテーブル名だけでデータ互換性を認定していません。個人DMの検証成功を共有会議の受入に置き換えません。
 
 ## 既存機能の証拠
 
