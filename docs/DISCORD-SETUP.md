@@ -102,9 +102,9 @@ node --env-file=.kotodama/secrets/discord.env --env-file=.kotodama/secrets/voice
 
 公式資料：[最初のDiscord Bot](https://docs.discord.com/developers/quick-start/getting-started)。Portalの表示が変わった場合は現在の画面を読み直します。
 
-## GPT-Live自然会話を試す設定例
+## 音声会話から仕事までを試す設定例
 
-`init`で生成した `.kotodama/config.json` の既存項目を保ち、以下をマージします。IDは自分のDiscordの値へ置き換えてください。既定のLive transcriptを使うため、リアルタイム用ローカルASRは不要です。この断片だけでは完全な設定ファイルではありません。
+`init`で生成した `.kotodama/config.json` の既存項目を保ち、以下をマージします。IDは自分のDiscordの値へ置き換えてください。公式OpenAI ASRで依頼を確定するため、ローカルASRは不要です。この断片だけでは完全な設定ファイルではありません。
 
 ```json
 {
@@ -113,7 +113,8 @@ node --env-file=.kotodama/secrets/discord.env --env-file=.kotodama/secrets/voice
     "mode": "assist",
     "autoJoin": true,
     "participantIds": ["YOUR_USER_ID"],
-    "transcriptSource": "live",
+    "transcriptSource": "openai",
+    "conversationStart": "speech",
     "naturalConversation": true,
     "maxSessionSeconds": 300,
     "maxDailyAudioSeconds": 600,
@@ -128,10 +129,10 @@ node --env-file=.kotodama/secrets/discord.env --env-file=.kotodama/secrets/voice
 | `discord.voiceChannelId` | 入るVCを一つに固定 |
 | `voice.autoJoin` | 対象者がいると入室、無人時に退出。手動停止と対象外参加者の条件は維持 |
 | `voice.participantIds` | 処理を許可した人。操作者は別途 `discord.operators` に設定 |
-| `voice.transcriptSource` | `live`（既定）はGPT-Liveを発話開始時に開く。`local` は確定入力と呼びかけ検出をローカルASRで行う |
-| `voice.conversationStart` | ローカルASR時、`speech` は操作者の発話検出、`wake` は呼び名の認識でLiveを開始 |
+| `voice.transcriptSource` | 新規既定の `openai` は公式ASRで依頼を確定。`local` は既存ローカルASR。`live` の暫定文は実行に使わない |
+| `voice.conversationStart` | `openai` / `local` の `speech` は発話検出、`wake` は呼び名の認識で会話を開始 |
 | `voice.naturalConversation` | `true`（既定）はLive＋Responsesの自然会話、`false` は確定テキストを待つ方式 |
-| `voice.maxSessionSeconds` / `maxDailyAudioSeconds` / `maxTotalAudioSeconds` | 1接続／1日／累計の音声秒数上限。上記は初回試験用の小さい枠 |
+| `voice.maxSessionSeconds` / `maxDailyAudioSeconds` / `maxTotalAudioSeconds` | 1接続／1日／累計の音声秒数上限。日・累計枠はLive接続とASR発話を合算。上記は初回試験用 |
 | `voice.outputPrefillMs` / `maxOutputQueueMs` | 出力を蓄える時間／未再生queueの上限。既定120ms／500ms。小さくすれば必ず改善するわけではない |
 | `voice.storeAudio` / `archive` | 原音保存は明示設定。[保存接続](ARCHIVE-RUNTIME.md)には別途encoder・保存先・保持方針が必要 |
 
@@ -166,6 +167,6 @@ Live会話の設定を保ったまま、絶対path・ID・保持policyを自分�
 
 自然会話内のbackendは現在 `gpt-5.6-luna`、low reasoning、出力800tokenに固定です。別経路の `analyzer.model` や `analyzer.maxOutputTokens` を変更してもこの値は変わりません。GPT-Live 1とLunaの利用権限を持つ `OPENAI_API_KEY` を実行ホストへ用意します。APIキーは付属しません。
 
-[公式モデル資料](https://developers.openai.com/api/docs/models/gpt-live-1)ではLiveの接続時間とbackendモデル・tool利用は別課金です。秒数上限は全API費用の金額上限ではありません。ローカルASRの負荷も監視してください。`naturalConversation: true` は短い無言では切断せず、終了tool・手動退出・接続/利用上限で閉じます。
+[公式モデル資料](https://developers.openai.com/api/docs/models/gpt-live-1)ではLiveの接続時間とbackendモデル・tool利用は別課金です。秒数上限は全API費用の金額上限ではありません。音声とResponsesそれぞれの利用量を確認してください。`naturalConversation: true` は短い無言では切断せず、終了tool・手動退出・接続/利用上限で閉じます。
 
 設定後に `doctor`、`register`、`start` を上記の方法で実行します。対象VCで挨拶し、その返答後に呼び名なしで質問を続けてください。続いて割り込みと `voice leave` を確認します。始まらなければ `voice` コマンドの `mode:start_conversation` を選び、`status` で参加者・手動停止・上限を確認します。API応答、Discord再生、人の実聴を分け、別環境での再現は[受入表](ACCEPTANCE.md)の未受入項目を埋める必要があります。
