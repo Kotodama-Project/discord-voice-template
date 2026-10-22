@@ -158,7 +158,7 @@ export class VoiceRoom {
       const called=addressed(turn.text,cfg)||Boolean(transcriptCorrection&&!transcriptCorrection.uncertain&&addressed(transcriptCorrection.text,cfg));
       const eligible=()=>identified&&state.epoch===this.epoch&&this.connectionReady()&&!this.paused&&!this.recovering&&this.audienceAllowed()&&this.audience().includes(state.actor);
       let session=this.sessions.get(state.actor);
-      const active=this.mode==='assist'&&eligible()&&Boolean(cfg.voice.naturalConversation||called||session&&this.current(session)&&session.conversationActive);
+      const active=this.mode==='assist'&&eligible()&&Boolean(cfg.voice.naturalConversation&&cfg.voice.conversationStart==='speech'||called||session&&this.current(session)&&session.conversationActive);
       // A final request does not depend on the separate conversational audio session.
       if(active&&this.mode==='assist'&&(!session||!this.current(session))){
         void this.session(state.actor,{initialHistory:[{role:'user',text:turn.text}]}).catch(error=>{if(!error.voiceProviderReported)this.onError(errorCode(error));});

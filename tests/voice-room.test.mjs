@@ -166,7 +166,7 @@ test('a delayed end decision cannot close a replacement Live session in the same
 
 
 test('OpenAI final utterances automatically create one scoped Task even when Live audio is unavailable',async t=>{
-  let selectedAsr;const {room,channel,store,config}=await fixture(t,options=>({...provider(options),start:async()=>{throw Error('synthetic unavailable audio');}}),{configure:c=>{c.voice.naturalConversation=true;c.voice.transcriptSource='openai';c.voice.openaiAsr={url:'https://api.openai.com/v1/audio/transcriptions',model:'gpt-transcribe',apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY',maxUtteranceSeconds:30};},localAsrFactory:options=>{selectedAsr=options;return {transcribe:async()=> '資料を作って'};}});
+  let selectedAsr;const {room,channel,store,config}=await fixture(t,options=>({...provider(options),start:async()=>{throw Error('synthetic unavailable audio');}}),{configure:c=>{c.voice.naturalConversation=true;c.voice.conversationStart='speech';c.voice.transcriptSource='openai';c.voice.openaiAsr={url:'https://api.openai.com/v1/audio/transcriptions',model:'gpt-transcribe',apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY',maxUtteranceSeconds:30};},localAsrFactory:options=>{selectedAsr=options;return {transcribe:async()=> '資料を作って'};}});
   channel.members.delete(b);config.worker.actions=['write_file'];const displayed=[],executed=[];
   const pipeline=new Pipeline({store,config,onSource:async s=>displayed.push(s),analyzer:{analyze:async s=>{assert.equal(s.text,'資料を作って');return {summary:'依頼',intents:[{kind:'request',title:'資料',request:s.text,action:'write_file',explicit:true,complete:true,acceptance:['資料がある']}],replyRequested:false,reply:''};}},worker:{run:async task=>{executed.push(task);return {state:'needs_review',summary:'検証fixture',artifacts:[]};}}});room.pipeline=pipeline;
   assert.equal(selectedAsr.url,'https://api.openai.com/v1/audio/transcriptions');assert.equal(selectedAsr.apiKey,'fixture');
@@ -195,4 +195,12 @@ test('queued ASR checks a revoked source before uploading and OpenAI ASR reserve
 test('minutes mode records finalized OpenAI speech without starting a conversation or executing work',async t=>{
   let starts=0;const {room,channel,sources}=await fixture(t,options=>{starts++;return provider(options);},{configure:c=>{c.voice.mode='minutes';c.voice.naturalConversation=true;c.voice.transcriptSource='openai';c.voice.openaiAsr={...c.voice.openaiAsr,apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY'};},localAsrFactory:()=>({})});channel.members.delete(b);
   await room.queueLocalTurn(room.localState(a),{id:'minutes-final',text:'資料を作って',startMs:0,endMs:1000});assert.equal(starts,0);assert.equal(sources.length,1);assert.deepEqual(sources[0].flags,{execute:false,reply:false,analyze:true});
+});
+
+
+test('legacy local wake mode keeps natural conversation dormant until an explicit wake request',async t=>{
+  let starts=0,analyses=0;const {room,channel,store,config}=await fixture(t,options=>{starts++;return provider(options);},{configure:c=>{c.voice.naturalConversation=true;c.voice.conversationStart='wake';c.voice.transcriptSource='local';c.voice.localAsr={url:'http://127.0.0.1:9000/v1/audio/transcriptions',model:'fixture',maxUtteranceSeconds:30};},localAsrFactory:()=>({})});channel.members.delete(b);config.worker.actions=['write_file'];
+  const pipeline=new Pipeline({store,config,analyzer:{analyze:async s=>{analyses++;return {summary:'依頼',intents:[{kind:'request',title:'資料',request:s.text,action:'write_file',explicit:true,complete:true,acceptance:['資料がある']}],replyRequested:false,reply:''};}},worker:{run:async()=>({state:'needs_review',summary:'検証fixture',artifacts:[]})}});room.pipeline=pipeline;const state=room.localState(a);
+  await room.queueLocalTurn(state,{id:'before-wake',text:'資料を作って',startMs:0,endMs:1000});assert.equal(starts,0);assert.equal(analyses,0);assert.equal(store.tasks(a).length,0);assert.equal(store.sources(a).length,1);
+  await room.queueLocalTurn(state,{id:'wake-request',text:'ことだま、資料を作って',startMs:1000,endMs:2000});await Promise.all([...pipeline.analysis.values()]);await pipeline.tail;assert.equal(starts,1);assert.equal(analyses,1);assert.equal(store.tasks(a).length,1);await pipeline.close();
 });
