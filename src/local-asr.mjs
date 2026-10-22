@@ -19,8 +19,8 @@ export class LocalAsr {
   }
   async transcribe(pcm){
     check(Buffer.isBuffer(pcm)&&pcm.length>=4800&&pcm.length<=this.maxUtteranceSeconds*48000,'LOCAL_ASR_AUDIO_INVALID');
-    const form=new FormData(),file=new Blob([pcm24MonoWav(pcm)],{type:'audio/wav'});form.append(this.protocol==='kotodama'?'audio':'file',file,'utterance.wav');form.append('language',this.language);
-    if(this.protocol==='openai'){form.append('model',this.model);form.append('response_format','json');if(this.initialPrompt)form.append('prompt',this.initialPrompt);}
+    const form=new FormData(),file=new Blob([pcm24MonoWav(pcm)],{type:'audio/wav'});form.append(this.protocol==='kotodama'?'audio':'file',file,'utterance.wav');form.append(this.protocol==='openai'&&this.model==='gpt-transcribe'?'languages[]':'language',this.language);
+    if(this.protocol==='openai'){form.append('model',this.model);if(this.model!=='gpt-transcribe')form.append('response_format','json');if(this.initialPrompt)form.append('prompt',this.initialPrompt);}
     else {if(this.initialPrompt)form.append('initial_prompt',this.initialPrompt);if(this.hotwords)form.append('hotwords',this.hotwords);}
     let response;try{response=await this.fetcher(this.url,{method:'POST',redirect:'error',headers:this.apiKey?{authorization:`Bearer ${this.apiKey}`}:{},body:form,signal:AbortSignal.timeout(this.timeoutSeconds*1000)});}catch{throw new Refused('LOCAL_ASR_FAILED');}
     if(!response.ok)throw new Refused('LOCAL_ASR_FAILED');const length=Number(response.headers.get('content-length')??0);check(!length||length<=65536,'LOCAL_ASR_RESULT_LIMIT');

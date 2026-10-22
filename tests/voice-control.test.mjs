@@ -30,7 +30,7 @@ function waitForState(connection,status,signal){
 }
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 async function fixture(t,{autoJoin=true,ready=true,wait=waitForState,fetchChannel,providerFactory}={}){
-  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-occupancy-')),store=new Store(root),config=exampleConfig();
+  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-occupancy-')),store=new Store(root),config=exampleConfig();config.voice.transcriptSource='live';
   config.discord.voiceChannelId='100000000000000005';Object.assign(config.voice,{autoJoin,maxDailyAudioSeconds:100,maxTotalAudioSeconds:100,participantIds:[a,b]});
   const channel={id:config.discord.voiceChannelId,guildId:config.discord.guildId,guild:{voiceAdapterCreator:{}},isVoiceBased:()=>true,members:new Map()};
   const client=new EventEmitter();client.channels={cache:new Map([[channel.id,channel]]),fetch:fetchChannel??(async()=>channel)};

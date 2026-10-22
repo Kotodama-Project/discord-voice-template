@@ -21,3 +21,9 @@ test('local transcript mode requires an explicit local ASR endpoint',()=>{
   const base={version:1,installation:'fixture',discord:{guildId:'100000000000000001',textChannelIds:['100000000000000003'],resultChannelId:'100000000000000003',operators:['100000000000000002']},voice:{transcriptSource:'local'},worker:{executable:'codex',workspace:'.'}};
   assert.throws(()=>Config.parse(base),/LOCAL_ASR_CONFIG_REQUIRED/);base.voice.localAsr={url:'http://127.0.0.1:9000/v1/audio/transcriptions',model:'tiny'};assert.equal(Config.parse(base).voice.localAsr.language,'ja');
 });
+
+
+test('OpenAI gpt-transcribe uses plural languages and default JSON without legacy format fields',async()=>{
+  let form;const asr=new LocalAsr({url:'https://api.openai.com/v1/audio/transcriptions',model:'gpt-transcribe',apiKey:'synthetic',initialPrompt:'ことだま',fetcher:async(_url,options)=>{form=options.body;assert.equal(options.redirect,'error');return new Response(JSON.stringify({text:'資料を作って'}),{status:200});}});
+  assert.equal(await asr.transcribe(Buffer.alloc(4800)),'資料を作って');assert.equal(form.get('languages[]'),'ja');assert.equal(form.get('language'),null);assert.equal(form.get('response_format'),null);assert.equal(form.get('model'),'gpt-transcribe');assert.equal(form.get('prompt'),'ことだま');assert(form.get('file'));
+});

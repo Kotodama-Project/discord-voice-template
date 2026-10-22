@@ -6,6 +6,7 @@ import {voiceNotice} from './consent.mjs';
 import {voiceCommand,voiceStatusText} from './voice-control.mjs';
 import {NotificationQueue} from './notifications.mjs';
 import {resultFiles} from './result-files.mjs';
+import {transcriptMessages} from './transcript-display.mjs';
 
 export const commandDefinition={name:'kotodama',description:'ことだまに相談・依頼し、仕事と音声を操作します',options:[
   {type:1,name:'ask',description:'相談する',options:[{type:3,name:'text',description:'知りたいこと',required:true}]},
@@ -102,6 +103,24 @@ export class DiscordAdapter {
       const buttons=managed?(optedOut?[{type:2,style:2,label:'自分の停止設定を解除する',custom_id:'kotodama-consent:agree:'+notice.id}]:[{type:2,style:2,label:'自分の音声処理を停止する',custom_id:'kotodama-consent:revoke:'+notice.id}]):[{type:2,style:1,label:'同意して音声処理を許可',custom_id:'kotodama-consent:agree:'+notice.id},{type:2,style:2,label:'音声処理の同意を取り消す',custom_id:'kotodama-consent:revoke:'+notice.id}];
       await i.editReply({content:`${managed?'プライバシーの説明・同意確認は人間側が責任を持つ運用です。Botの同意クリックは必須ではありません。\n\n':''}${notice.text}\n\nあなたの状態：${status}`,components:[{type:1,components:buttons}],allowedMentions:{parse:[]}});
     }catch(e){await i.editReply({content:`設定できませんでした：${errorCode(e)}`,components:[],allowedMentions:{parse:[]}});}
+  }
+  async transcript(source,receipt){
+    if(!this.verifiedInstallation||source.metadata?.kind!=='voice'||source.withdrawn)return;
+    const cfg=this.policy();if(source.guildId!==cfg.discord.guildId||source.channelId!==cfg.discord.voiceChannelId)return;
+    const valid=actor=>{const current=this.store.source(source.key,actor);check(current.revision===source.revision,'SOURCE_CHANGED');check(source.metadata.privacyNoticeId===voiceNotice(this.policy()).id&&this.voice?.allowed(source.metadata.inputAccountId),'SOURCE_ACCESS_DENIED');};
+    const channel=await this.client.channels.fetch(source.channelId);
+    for(const actor of source.readers){
+      try{
+        valid(actor);check(await this.canRead(channel,actor),'SOURCE_ACCESS_DENIED');const user=await this.client.users.fetch(actor);
+        const messages=transcriptMessages(source,receipt);
+        for(const [index,payload] of messages.entries()){
+          check(this.verifiedInstallation,'BOT_INSTALLATION_NOT_VERIFIED');check(await this.canRead(channel,actor),'SOURCE_ACCESS_DENIED');valid(actor);
+          const key=digest(['voice-transcript',source.key,source.revision,actor,index]);
+          if(!this.store.claimDelivery(key,payload.content))continue;
+          try{const message=await user.send(payload);this.store.delivered(key,message.id);}catch{this.onError('TRANSCRIPT_DELIVERY_UNKNOWN');break;}
+        }
+      }catch(error){this.onError(errorCode(error));}
+    }
   }
   async deliver(task){
     if(this.notifications?.quiet()){this.notifications.defer(digest(['task',task.id,task.revision]),'task',{id:task.id,revision:task.revision,actor:task.actor});return {state:'deferred'};}

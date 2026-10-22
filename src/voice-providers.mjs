@@ -82,6 +82,7 @@ export class VoiceProvider {
       }catch(error){failure(error);}
     });
   }
+  get inputOffsetMs(){return this.audioClock?this.audioClock.sentMs+this.audioClock.bytes/48:null;}
   append(pcm){check(this.active&&!this.closed,'VOICE_NOT_ACTIVE');check(Buffer.isBuffer(pcm)&&pcm.length>0&&pcm.length%2===0&&pcm.length<=48000,'PCM_INVALID');
     if(this.audioClock){this.audioClock.append(pcm);return;}this.transport.send(this.mode==='assist'?{type:'session.input_audio.append',audio:pcm.toString('base64')}:{type:'input_audio_buffer.append',audio:pcm.toString('base64')});}
   async handleNativeCalls(calls){

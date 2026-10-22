@@ -8,13 +8,14 @@ import {PassThrough} from 'node:stream';
 import OpusScript from 'opusscript';
 import {VoiceConnectionStatus as State} from '@discordjs/voice';
 import {Store} from '../src/store.mjs';
+import {Pipeline} from '../src/pipeline.mjs';
 import {exampleConfig} from '../src/config.mjs';
 import {VoiceRoom} from '../src/voice.mjs';
 import {DiscordAdapter} from '../src/discord.mjs';
 import {voiceNotice} from '../src/consent.mjs';
 const a='100000000000000002',b='100000000000000004';
 async function fixture(t,providerFactory,{configure=()=>{},localAsrFactory}={}){
-  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-voice-'));const store=new Store(root);const config=exampleConfig();config.discord.voiceChannelId='100000000000000005';config.voice.maxDailyAudioSeconds=100;config.voice.consentMode='participant_opt_in';config.voice.naturalConversation=false;config.voice.apiKeyEnv='KOTODAMA_TEST_VOICE_KEY';process.env.KOTODAMA_TEST_VOICE_KEY='fixture';
+  const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-voice-'));const store=new Store(root);const config=exampleConfig();config.discord.voiceChannelId='100000000000000005';config.voice.maxDailyAudioSeconds=100;config.voice.consentMode='participant_opt_in';config.voice.naturalConversation=false;config.voice.transcriptSource='live';config.voice.apiKeyEnv='KOTODAMA_TEST_VOICE_KEY';process.env.KOTODAMA_TEST_VOICE_KEY='fixture';
   configure(config);
   const channel={id:config.discord.voiceChannelId,guildId:config.discord.guildId,members:new Map([[a,{id:a,user:{bot:false}}],[b,{id:b,user:{bot:false}}]])};const client=new EventEmitter();client.channels={cache:new Map([[channel.id,channel]])};const sources=[];
   const room=new VoiceRoom({client,config,store,providerFactory,localAsrFactory,sourceReaders:async()=>[a,b],pipeline:{ingest:async(s,flags)=>sources.push({s,flags})}});
@@ -72,10 +73,10 @@ test('a delayed local wake after departure is recorded without starting Live',as
   assert.equal(starts,0);assert.equal(sources.length,1);assert.equal(sources[0].flags.execute,false);assert.equal(sources[0].flags.reply,false);
 });
 
-test('a failed Live start does not discard the final local transcript',async t=>{
+test('a failed Live start does not discard a final explicit request',async t=>{
   const {room,channel,sources}=await fixture(t,o=>({...provider(o),start:async()=>{throw new Error('fixture startup failed');}}));
   channel.members.delete(b);await room.queueLocalTurn(room.localState(a),{id:'start-failed',text:'ことだま、こんにちは',startMs:0,endMs:1000});
-  assert.equal(sources.length,1);assert.equal(sources[0].s.text,'ことだま、こんにちは');assert.equal(sources[0].flags.execute,false);
+  assert.equal(sources.length,1);assert.equal(sources[0].s.text,'ことだま、こんにちは');assert.equal(sources[0].flags.execute,true);
 });
 test('an idle Live conversation closes while the Discord room keeps local listening',async t=>{const {room,channel,config}=await fixture(t,provider);channel.members.delete(b);config.voice.conversationIdleSeconds=30;const session=await room.session(a);session.conversationActive=true;session.lastInput=Date.now()-31000;await new Promise(resolve=>setTimeout(resolve,1100));assert.equal(room.sessions.has(a),false);assert.equal(session.provider.active,false);assert(room.connectionReady());});
 
@@ -161,4 +162,37 @@ test('voice processing scope alone cannot grant a participant access to project 
 test('a delayed end decision cannot close a replacement Live session in the same VC epoch',async t=>{
   const {room}=await fixture(t,provider);const old=await room.session(a);await room.endSession(old);const current=await room.session(a);
   await room.applyModelAction('end_conversation',{actorId:a,metadata:{kind:'voice',voiceEpoch:room.epoch,sessionId:old.id}});assert.equal(room.sessions.get(a),current);assert(current.provider.active);
+});
+
+
+test('OpenAI final utterances automatically create one scoped Task even when Live audio is unavailable',async t=>{
+  let selectedAsr;const {room,channel,store,config}=await fixture(t,options=>({...provider(options),start:async()=>{throw Error('synthetic unavailable audio');}}),{configure:c=>{c.voice.naturalConversation=true;c.voice.transcriptSource='openai';c.voice.openaiAsr={url:'https://api.openai.com/v1/audio/transcriptions',model:'gpt-transcribe',apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY',maxUtteranceSeconds:30};},localAsrFactory:options=>{selectedAsr=options;return {transcribe:async()=> '資料を作って'};}});
+  channel.members.delete(b);config.worker.actions=['write_file'];const displayed=[],executed=[];
+  const pipeline=new Pipeline({store,config,onSource:async s=>displayed.push(s),analyzer:{analyze:async s=>{assert.equal(s.text,'資料を作って');return {summary:'依頼',intents:[{kind:'request',title:'資料',request:s.text,action:'write_file',explicit:true,complete:true,acceptance:['資料がある']}],replyRequested:false,reply:''};}},worker:{run:async task=>{executed.push(task);return {state:'needs_review',summary:'検証fixture',artifacts:[]};}}});room.pipeline=pipeline;
+  assert.equal(selectedAsr.url,'https://api.openai.com/v1/audio/transcriptions');assert.equal(selectedAsr.apiKey,'fixture');
+  await room.queueLocalTurn(room.localState(a),{id:'final-openai',text:'資料を作って',startMs:0,endMs:1000});await Promise.all([...pipeline.analysis.values()]);await pipeline.tail;
+  assert.equal(displayed.length,1);assert.equal(displayed[0].final,true);assert.equal(displayed[0].actorId,a);assert.equal(displayed[0].metadata.transcriptOrigin,'openai_asr');assert.equal(displayed[0].metadata.nativeConversation,true);assert.equal(executed.length,1);assert.equal(store.tasks(a).length,1);await pipeline.close();
+});
+
+test('provisional Live turns are displayed as nonfinal and cannot request execution or a second spoken answer',async t=>{
+  const {room,channel,sources}=await fixture(t,provider,{configure:c=>{c.voice.naturalConversation=true;}});channel.members.delete(b);const session=await room.session(a),turn=session.turns.begin(0);session.turns.fragment({id:'fragment',text:'資料を作って',startMs:0,endMs:100});session.turns.end(turn,100);await session.turns.flush();
+  assert.equal(sources.length,1);assert.equal(sources[0].s.final,false);assert.equal(sources[0].s.metadata.providerTurnComplete,false);assert.equal(sources[0].s.metadata.nativeConversation,true);assert.deepEqual(sources[0].flags,{execute:false,reply:false,analyze:false});
+});
+
+test('Live utterance timestamps include silence already sent by the pacing clock',async t=>{
+  let offset=5000;const {room,channel,sources}=await fixture(t,options=>({...provider(options),get inputOffsetMs(){return offset;},append:pcm=>{offset+=pcm.length/48;}}));channel.members.delete(b);
+  const stream=new PassThrough();room.connection.receiver={subscribe:()=>stream};await room.capture(a);const session=room.sessions.get(a),encoder=new OpusScript(48000,2,OpusScript.Application.AUDIO),packet=Buffer.from(encoder.encode(Buffer.alloc(3840),960));encoder.delete();for(let i=0;i<6;i++)stream.write(packet);stream.end();await new Promise(resolve=>setImmediate(resolve));session.provider.options.onFragment({id:'late-timeline',text:'間の後の発言',startMs:5000,endMs:5100});await session.turns.flush();
+  assert.equal(sources.length,1);assert.equal(sources[0].s.metadata.startMs,5000);assert.equal(sources[0].s.text,'間の後の発言');
+});
+
+test('queued ASR checks a revoked source before uploading and OpenAI ASR reserves its own audio allowance',async t=>{
+  let calls=0;const {room,store,config}=await fixture(t,provider,{configure:c=>{c.voice.transcriptSource='openai';c.voice.openaiAsr={url:'https://api.openai.com/v1/audio/transcriptions',model:'gpt-transcribe',apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY',maxUtteranceSeconds:30};},localAsrFactory:()=>({transcribe:async()=>{calls++;return '確定';}})});
+  const state=room.localState(a);await room.transcribeLocal(Buffer.alloc(4800),{state});assert.equal(calls,1);assert.equal(store.db.prepare('SELECT reserved_ms FROM usage').get().reserved_ms,100);
+  let release;room.localAsrTail=new Promise(resolve=>{release=resolve;});const pending=room.transcribeLocal(Buffer.alloc(4800),{state});store.recordConsent({guild:config.discord.guildId,channel:config.discord.voiceChannelId,actor:a,notice:voiceNotice(config).id,granted:false,interactionId:'900000000000000050'});release();await assert.rejects(pending,{code:'SOURCE_ACCESS_DENIED'});assert.equal(calls,1);
+});
+
+
+test('minutes mode records finalized OpenAI speech without starting a conversation or executing work',async t=>{
+  let starts=0;const {room,channel,sources}=await fixture(t,options=>{starts++;return provider(options);},{configure:c=>{c.voice.mode='minutes';c.voice.naturalConversation=true;c.voice.transcriptSource='openai';c.voice.openaiAsr={...c.voice.openaiAsr,apiKeyEnv:'KOTODAMA_TEST_VOICE_KEY'};},localAsrFactory:()=>({})});channel.members.delete(b);
+  await room.queueLocalTurn(room.localState(a),{id:'minutes-final',text:'資料を作って',startMs:0,endMs:1000});assert.equal(starts,0);assert.equal(sources.length,1);assert.deepEqual(sources[0].flags,{execute:false,reply:false,analyze:true});
 });
