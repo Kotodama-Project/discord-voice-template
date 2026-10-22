@@ -8,7 +8,7 @@ import {Store} from '../src/store.mjs';
 import {startRuntime,controlCommand} from '../src/runtime.mjs';
 import {DiscordAdapter} from '../src/discord.mjs';
 import {exportDocument,exportVoiceTranscript,readExport} from '../src/documents.mjs';
-import {CliAnalyzer} from '../src/llm.mjs';
+import {CliAnalyzer,ResponsesAnalyzer} from '../src/llm.mjs';
 
 const HELP=`ことだま — Discordの音声会話と仕事へ\n\n  init --config PATH [--guild ID --app ID --operator ID --channel ID --workspace PATH]\n  doctor --config PATH\n  start --config PATH [--offline]\n  register --config PATH\n  status | shutdown --config PATH --actor ID\n  tasks | result | stop | resume --config PATH --actor ID [--task ID]\n  request --config PATH --actor ID --action research|summarize|write_file|develop --text TEXT\n  voice --config PATH --actor ID --mode assist|minutes|join|pause|resume|stop_speech|leave\n  import-discord --config PATH --actor ID [--limit 10000]\n  import-file --config PATH --actor ID --file TEXT\n  export --config PATH --actor ID --output FILE\n  export-transcript --config PATH --actor ID --output FILE\n  read-export --config PATH --actor ID --file FILE\n\n--json で機械可読の結果を返します。秘密値は引数へ渡さず環境変数に設定してください。`;
 const spec={config:{type:'string',default:'.kotodama/config.json'},json:{type:'boolean',default:false},offline:{type:'boolean',default:false},guild:{type:'string'},app:{type:'string'},operator:{type:'string'},channel:{type:'string'},workspace:{type:'string'},actor:{type:'string'},task:{type:'string'},action:{type:'string'},text:{type:'string'},mode:{type:'string'},file:{type:'string'},output:{type:'string'},limit:{type:'string'},help:{type:'boolean'}};
@@ -27,8 +27,8 @@ try{
     const {spawnSync}=await import('node:child_process');const binary=cmd=>{const r=spawnSync(cmd,['--version'],{encoding:'utf8',windowsHide:true});return !r.error&&r.status===0;};
     output({node:process.versions.node,nodeSupported:Number(process.versions.node.split('.')[0])>=24,taskOwner:config.owner.kind,
       discordCredentialPresent:Boolean(process.env[config.discord.botTokenEnv]),openaiCredentialPresent:Boolean(process.env[config.voice.apiKeyEnv]),
-      analyzerAdapter:config.analyzer.kind,analyzerAvailable:config.analyzer.kind==='responses'?Boolean(process.env[config.analyzer.apiKeyEnv]):binary(config.analyzer.executable),workerAvailable:binary(config.worker.executable),gitAvailable:binary('git'),ffmpegAvailable:binary(config.archive?.ffmpeg??'ffmpeg'),
-      voiceConfigured:Boolean(config.discord.voiceChannelId),privacyMode:config.voice.consentMode,voiceParticipantsConfigured:config.voice.participantIds.length,audioBudgetSeconds:config.voice.maxDailyAudioSeconds,
+      analyzerAdapter:config.analyzer.kind,analyzerAvailable:config.analyzer.kind==='responses'?Boolean(process.env[config.analyzer.apiKeyEnv]):binary(config.analyzer.executable),workerAdapter:config.worker.kind,workerCredentialConfigured:config.worker.apiKeyEnv?Boolean(process.env[config.worker.apiKeyEnv]):Boolean(config.worker.codexHome),workerAvailable:binary(config.worker.executable),gitAvailable:binary('git'),ffmpegAvailable:binary(config.archive?.ffmpeg??'ffmpeg'),
+      voiceConfigured:Boolean(config.discord.voiceChannelId),transcriptSource:config.voice.transcriptSource,transcriptionCredentialPresent:config.voice.transcriptSource==='openai'?Boolean(process.env[config.voice.openaiAsr.apiKeyEnv]):null,privacyMode:config.voice.consentMode,voiceParticipantsConfigured:config.voice.participantIds.length,audioBudgetSeconds:config.voice.maxDailyAudioSeconds,
       archiveConfigured:Boolean(config.archive?.enabled),whisperProtocol:config.archive?.whisperProtocol??null,whisperCredentialPresent:config.archive?.whisperProtocol==='openai'?Boolean(process.env[config.archive.whisperApiKeyEnv]):null,assistantAudioCaptured:config.archive?.captureAssistantAudio??false,localWriteWorkerSupported:process.platform!=='win32',providerVerified:false});
   }else if(command==='start'){
     const runtime=await startRuntime(filename,{offline:options.offline});const stop=()=>runtime.close().then(()=>process.exit(0)).catch(()=>process.exit(1));process.once('SIGINT',stop);process.once('SIGTERM',stop);
@@ -48,7 +48,7 @@ try{
         check(options.file,'FILE_REQUIRED');const bytes=await readFile(options.file);check(bytes.length<=2000000,'IMPORT_SIZE_LIMIT');
         const source={provider:'file',guildId:config.discord.guildId,channelId:config.discord.resultChannelId,sourceId:digest(path.resolve(options.file)),actorId:options.actor,readers:[options.actor],revision:Date.now(),final:true,text:bytes.toString('utf8'),metadata:{kind:'file',imported:true,sha256:digest(bytes)}};
         const receipt=store.ingest(source);const s=store.source(receipt.key,options.actor);
-        if(!options.offline){const result=await new CliAnalyzer(config).analyze(s,[]);store.saveIntents(s,result.intents,options.actor);}
+        if(!options.offline){const analyzer=config.analyzer.kind==='responses'?new ResponsesAnalyzer(config):new CliAnalyzer(config);const result=await analyzer.analyze(s,[]);store.saveIntents(s,result.intents,options.actor);}
         output({...receipt,analysis:options.offline?'not_run':'completed',execution:false});
       }
     }finally{store.close();}

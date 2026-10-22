@@ -71,4 +71,4 @@ export class VoiceControl {
 }
 
 export async function voiceCommand(room,mode,options){return room.control.command(mode,options);}
-export function voiceStatusText(status){const live=status.liveSessions?`Live会話 ${status.liveSessions}件`:status.transcriptSource==='local'?'ローカル聞き役':'Live聞き役';return `音声: ${status.mode} / ${status.connected?'接続中':'未接続'} / ${status.paused?'録音停止中':'受付中'} / ${live} / 自動接続${status.autoJoin?'オン':'オフ'} / ${status.waitingText}`;}
+export function voiceStatusText(status){const live=status.liveSessions?`Live会話 ${status.liveSessions}件`:status.transcriptSource==='local'?'ローカル聞き役':status.transcriptSource==='openai'?'OpenAI文字起こし':'Live聞き役';return `音声: ${status.mode} / ${status.connected?'接続中':'未接続'} / ${status.paused?'録音停止中':'受付中'} / ${live} / 自動接続${status.autoJoin?'オン':'オフ'} / ${status.waitingText}`;}

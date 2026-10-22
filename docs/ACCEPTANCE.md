@@ -2,6 +2,25 @@
 
 この文書は実装候補の受入境界です。ローカル試験で実サービスの成功を代用しません。
 
+## 2026-10-22のOpenAI構成
+
+| 範囲 | 確認したこと | 未確認 |
+|---|---|---|
+| 発話表示と確定依頼 | 発話別DM、現在reader、原文・訂正、暫定文の不実行、Live失敗時の確定依頼、8件の解析上限をfixtureで検証 | 実VCでの表示遅延・複数人の使い勝手 |
+| App Server | thread/worktree再利用、訂正前成果の配送、取消、送信不明時の再投入防止、認証分離のfixture。Linuxの実Codex 0.163.0で領域内write成功・外側/tmp/network拒否 | 実Discordを含む一周、実案件での協調 |
+| 既存キーのAPI接続 | 公式モデル一覧、短いResponses疎通に加え、製品のstrict schemaで合成依頼1回を解析しTaskを作成 | 実会話の意図判定品質 |
+| `gpt-transcribe` | 2.086秒の合成英語音声を1回送信、HTTP 200、期待文と一致、応答1.507秒 | 日本語実音声・Discord音声・長時間・複数人 |
+| 移行 | 新規OpenAI設定、CLI/既存wake設定の互換と旧fallback拒否を検証 | 稼働Bot切替、旧記録/Task owner移行、旧サービス停止 |
+
+実パイプライン検証では製品source `d43b211`、Codex `0.163.0`、`gpt-5.6-luna` を使用しました。合成の依頼を実Responses analyzerで1回解析し、Taskを作成。同じTaskを再開してApp Serverの実生成turnを1回実行（17.816秒）し、`add.mjs` の修正と `deliverables/result.md` の作成を確認しました。設定済み `node --test` はsandbox内でexit 0、元のsource repositoryとtestは不変、成果hashと配送用attachmentのbytesは一致しました。最初の検証用引数の設定失敗はturn開始前と確認し、解析を繰り返さず既存Taskを再開しています。実Discordへの送信はしていません。
+
+キーのMac転送、秘密値の出力、新規キー発行、既存Bot変更は行っていません。App Server単体のsandboxはhostの全読取りを隔離するcontainerではありません。
+
+現行の製品受入は[Issue #3](https://github.com/Kotodama-Project/discord-voice-template/issues/3)で追跡します。下記の2026-09の実Discord/CLI実績を、新しいApp Server構成の受入へ繰り上げません。
+
+## 既存機能の証拠
+
+
 | 範囲 | 状態 |
 |---|---|
 | 出典の版・訂正・閲覧制限、意図と実行の分離 | ローカル回帰試験 |
@@ -21,4 +40,4 @@
 
 `offline_fixture`は合成試験の表示です。設定にIDやモデル名があるだけで接続済みとは表示しません。CIは実音声・APIキー・Discord tokenを使いません。
 
-2026-09-13の限定実行確認では、合成の開発課題をtrusted CLIから投入し、Lunaが実ファイルを変更しました。Discordの画面操作による確認はエージェントがCLI経由で行ったもので、人による満足・音声同意の証拠とは区別します。ローカルモデルのfallbackはprimaryの起動失敗を模した条件で、実モデルのCLIツール操作・ファイル変更・テスト・成果hash読戻しまで確認しました。Discordの後続訂正でも同じTask IDの新版でREADME作成とコード修正が成功しています。
+2026-09-13の限定実行確認では、合成の開発課題をtrusted CLIから投入し、Lunaが実ファイルを変更しました。Discordの画面操作による確認はエージェントがCLI経由で行ったもので、人による満足・音声同意の証拠とは区別します。当時のローカルモデルfallbackにも限定確認がありましたが、その機構は現行版から削除しました。Discordの後続訂正でも同じTask IDの新版でREADME作成とコード修正が成功しています。

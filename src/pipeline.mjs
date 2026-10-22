@@ -3,29 +3,37 @@ import {check,digest,errorCode} from './common.mjs';
 import {verifyArtifacts} from './worker.mjs';
 
 export class Pipeline {
-  constructor({store,owner=store,config,analyzer,worker,authorize=async()=>{},onTask=async()=>{},onReply=async()=>{},onVoiceAction=async()=>{},onError=()=>{}}){
-    Object.assign(this,{store,owner,config,analyzer,worker,authorize,onTask,onReply,onVoiceAction,onError});this.active=new Map();this.queued=new Set();this.tail=Promise.resolve();this.analysis=new Map();this.analysisControllers=new Map();this.analysisBindings=new Map();this.closing=false;
+  constructor({store,owner=store,config,analyzer,worker,authorize=async()=>{},onTask=async()=>{},onSource=async()=>{},onReply=async()=>{},onVoiceAction=async()=>{},onError=()=>{}}){
+    Object.assign(this,{store,owner,config,analyzer,worker,authorize,onTask,onSource,onReply,onVoiceAction,onError});this.active=new Map();this.queued=new Set();this.tail=Promise.resolve();this.analysis=new Map();this.voiceAnalysisTails=new Map();this.voiceAnalysisPending=0;this.analysisControllers=new Map();this.analysisBindings=new Map();this.closing=false;
   }
   context(source,principal){
     const config=this.config.analyzer,maxSources=config.maxContextSources??12;let remaining=config.maxContextChars??24000;
     const result=[],time=s=>Date.parse(s.metadata?.createdAt??'')||0;
-    const room=this.store.sources(principal).filter(s=>s.guildId===source.guildId&&s.channelId===source.channelId&&s.key!==source.key);
+    const room=this.store.sources(principal).filter(s=>s.final===true&&s.guildId===source.guildId&&s.channelId===source.channelId&&s.key!==source.key);
     const archived=new Set(room.filter(s=>s.metadata?.kind==='archived_voice').map(s=>s.metadata.sessionId));
     const candidates=room.filter(s=>{const refs=s.metadata?.archiveSessionRefs;return !refs?.length||!refs.every(id=>archived.has(id));}).sort((a,b)=>time(a)-time(b)||a.revision-b.revision||a.key.localeCompare(b.key)).slice(-maxSources).reverse();
     for(const s of candidates){if(remaining<=0)break;const text=s.text.slice(0,Math.min(12000,remaining));remaining-=text.length;result.unshift({key:s.key,revision:s.revision,text,actorId:s.actorId});}return result;
   }
-  async ingest(source,{execute=false,reply=false,analyze=true}={}){
+  async ingest(source,{execute=false,reply=false,analyze=true}={},{waitForAnalysis=true}={}){
     check(!this.closing,'RUNTIME_STOPPING');if(this.owner.kind==='remote')await this.owner.ingest(source);
     const received=this.store.ingest(source);
     if(received.state==='corrected')for(const [id,run] of this.active)if(run.sourceKey===received.key||run.sourceKeys?.has(received.key))run.controller.abort();
     if(received.state==='corrected')for(const [id,bindings]of this.analysisBindings)if(bindings.some(b=>b.key===received.key))this.analysisControllers.get(id)?.abort();
-    if(['duplicate','stale'].includes(received.state)||!source.final||source.withdrawn)return received;
+    if(['duplicate','stale'].includes(received.state)||source.withdrawn)return received;
+    try{await this.onSource({...source,key:received.key},received);}catch(e){this.onError(errorCode(e));}
+    if(!source.final)return received;
     if(!analyze)return {...received,analysis:'recorded_only'};
     const principal=source.readers.includes(source.actorId)?source.actorId:source.readers.find(p=>this.config.discord.operators.includes(p));
     if(!principal)return {...received,analysis:'no_authorized_reader'};
     const key=digest([received.key,source.revision]);if(this.analysis.has(key))return this.analysis.get(key);
-    const job=this.#analyze({...source,key:received.key},principal,{execute,reply},key).finally(()=>{this.analysis.delete(key);this.analysisControllers.delete(key);this.analysisBindings.delete(key);});
-    this.analysis.set(key,job);return job;
+    const room=source.metadata?.kind==='voice'?`${source.provider}:${source.guildId}:${source.channelId}`:null;
+    if(room&&this.voiceAnalysisPending>=8){this.onError('VOICE_ANALYSIS_BUSY');return {...received,analysis:'busy'};}
+    const run=async()=>{check(!this.closing,'RUNTIME_STOPPING');const current=this.store.source(received.key,principal);if(current.revision!==source.revision)return {...received,analysis:'superseded'};return this.#analyze({...source,key:received.key},principal,{execute,reply},key);};
+    if(room)this.voiceAnalysisPending++;
+    const job=(room?(this.voiceAnalysisTails.get(room)??Promise.resolve()).catch(()=>{}).then(run):run()).finally(()=>{this.analysis.delete(key);this.analysisControllers.delete(key);this.analysisBindings.delete(key);if(room){this.voiceAnalysisPending--;if(this.voiceAnalysisTails.get(room)===job)this.voiceAnalysisTails.delete(room);}});
+    if(room)this.voiceAnalysisTails.set(room,job);
+    this.analysis.set(key,job);if(waitForAnalysis)return job;
+    job.catch(e=>this.onError(errorCode(e)));return {...received,analysis:'queued'};
   }
   async #analyze(source,principal,{execute,reply},analysisKey){
     const controller=new AbortController();this.analysisControllers.set(analysisKey,controller);

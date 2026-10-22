@@ -20,7 +20,7 @@ test('runtime metadata cannot redirect control credentials to an injected host',
     await assert.rejects(controlCommand(config,{action:'status'}),{code:'RUNTIME_PORT_INVALID'});
   }
 });
-async function configFixture(t){const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-runtime-test-'));const config=exampleConfig({workspace:root});config.dataDir=path.join(root,'data');config.analyzer={executable:process.execPath,args:[fixtureCli],timeoutSeconds:10};config.worker={...config.worker,executable:process.execPath,args:[fixtureCli],timeoutSeconds:10};const file=path.join(root,'config.json');await atomicJson(file,config);const cleanup=async()=>{assert(inside(os.tmpdir(),root));await rm(root,{recursive:true,force:true});};return {root,config,file,cleanup};}
+async function configFixture(t){const root=await mkdtemp(path.join(os.tmpdir(),'ktdm-runtime-test-'));const config=exampleConfig({workspace:root});config.dataDir=path.join(root,'data');config.analyzer={executable:process.execPath,args:[fixtureCli],timeoutSeconds:10};config.worker={...config.worker,kind:'codex_cli',executable:process.execPath,args:[fixtureCli],timeoutSeconds:10};delete config.worker.apiKeyEnv;const file=path.join(root,'config.json');await atomicJson(file,config);const cleanup=async()=>{assert(inside(os.tmpdir(),root));await rm(root,{recursive:true,force:true});};return {root,config,file,cleanup};}
 test('real HTTP control and child CLI produce an artifact and verify its bytes',async t=>{
   const {config,file,cleanup}=await configFixture(t);const logs=[];const r=await startRuntime(file,{offline:true,log:v=>logs.push(v)});t.after(async()=>{await r.close();await cleanup();});
   const task=await controlCommand(config,{action:'request',actor,operation:'research',text:'合成情報を調べて',requestId:'same-request'});await r.pipeline.tail;
@@ -59,14 +59,14 @@ test('runtime refuses a symbolic control token without changing its target',{ski
 });
 test('write worker includes unreported new files and supports later Task revisions',{skip:process.platform==='win32'?'Reference write worker runs on Linux; Windows CLI/client tests still run.':false},async t=>{
   const {config,root,cleanup}=await configFixture(t);t.after(cleanup);for(const args of [['init'],['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-m','fixture']]){const r=await runCommand('git',args,{cwd:root});assert.equal(r.code,0);}
-  config.worker.actions=['develop'];config.worker.args=[fixtureCli,'--fixture-write'];config.worker.verify=[{executable:process.execPath,args:['--check','created.mjs']}];const worker=new CliWorker(config);
-  const base={id:'task-fixture',actor,source_revision:1,action:'develop',request:'create',acceptance:[]};const a=await worker.run({...base,revision:1},[]);const b=await worker.run({...base,revision:2},[]);assert.notEqual(a.workspace,b.workspace);assert(a.artifacts.some(f=>f.relative==='created.mjs'));const patch=a.artifacts.find(f=>f.relative==='changes.patch');assert((await readFile(patch.path,'utf8')).includes('created.mjs'));assert.equal(a.validations[0].exitCode,0);
+  config.worker.actions=['develop'];config.worker.args=[fixtureCli,'--fixture-write'];const worker=new CliWorker(config);
+  const base={id:'task-fixture',actor,source_revision:1,action:'develop',request:'create',acceptance:[]};const a=await worker.run({...base,revision:1},[]);const b=await worker.run({...base,revision:2},[]);assert.notEqual(a.workspace,b.workspace);assert(a.artifacts.some(f=>f.relative==='created.mjs'));const patch=a.artifacts.find(f=>f.relative==='changes.patch');assert((await readFile(patch.path,'utf8')).includes('created.mjs'));assert.equal(a.validations.length,0);
 });
 
-test('a primary commit before authentication failure refuses fallback',{skip:process.platform==='win32'},async t=>{
+test('removed worker fallback is rejected before any primary execution',{skip:process.platform==='win32'},async t=>{
   const {config,root,cleanup}=await configFixture(t);t.after(cleanup);
   for(const args of [['init'],['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-m','fixture']])assert.equal((await runCommand('git',args,{cwd:root})).code,0);
   const primary=path.join(root,'primary.mjs');await writeFile(primary,`import {writeFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';writeFileSync('committed.mjs','export const answer=1;');execFileSync('git',['add','committed.mjs']);execFileSync('git',['-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','-m','changed']);process.stderr.write('Not logged in.');process.exit(1);`,'utf8');
   config.worker.actions=['develop'];config.worker.args=[primary];config.worker.fallback={executable:process.execPath,args:[fixtureCli],model:'fallback-fixture',timeoutSeconds:10};const worker=new CliWorker(config);
-  await assert.rejects(worker.run({id:'task-commit',actor,revision:1,source_revision:1,action:'develop',request:'fixture',acceptance:[]},[]),/FALLBACK_WORKSPACE_CHANGED/);
+  await assert.rejects(worker.run({id:'task-commit',actor,revision:1,source_revision:1,action:'develop',request:'fixture',acceptance:[]},[]),/WORKER_FALLBACK_REMOVED/);
 });

@@ -1,6 +1,6 @@
 # ArchiveRuntime初期化と呼出し
 
-VoiceRoomの48kHz受信とGPT-Liveの再生受付音声に接続済み。archiveを明示設定しvoice.storeAudioを有効にしたlocal ownerで使用する。`voice.transcriptSource` は `live` / `local` のどちらでもよく、既定のLive会話に録音を足すためだけにリアルタイム用ローカルASRを要求しない。journalPathはdataDir内の絶対path、archiveRootは既存保存先の絶対pathに限定する。既定では録音しない。
+VoiceRoomの48kHz受信とGPT-Liveの再生受付音声に接続済み。archiveを明示設定しvoice.storeAudioを有効にしたlocal ownerで使用する。`voice.transcriptSource` は `openai` / `live` / `local` のいずれでもよく、Live会話に録音を足すためだけにリアルタイム用ローカルASRを要求しない。journalPathはdataDir内の絶対path、archiveRootは既存保存先の絶対pathに限定する。既定では録音しない。
 
 保存用Whisperの送り先は `whisperProtocol` で選ぶ。`local`（既定）はloopback、private LAN、またはtailnet hostに束縛する。`openai`は `https://api.openai.com/v1/audio/transcriptions` 固定で、`whisperModel`（既定 `whisper-1`）と `whisperApiKeyEnv` が指す環境変数のキーを使い、multipart `file`・`response_format=verbose_json`・segment timestampsで呼ぶ。segmentが省略され全文textだけ返った場合も、録音区間全体の一segmentとして保持する。それ以外の外部送信先は設定できない。`whisperTimeoutMs` で1回あたりの上限を調整する。
 
