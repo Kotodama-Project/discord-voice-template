@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,rm,realpath,symlink} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {resultFiles} from '../src/result-files.mjs';
@@ -22,4 +22,19 @@ test('remote results cannot select arbitrary local files without an approved art
 
 test('results without deliverables do not require an artifact directory',async()=>{
   assert.deepEqual(await resultFiles({workspace:'not-used',artifacts:[]},{artifactRoot:'not-created'}),[]);
+});
+
+test('snapshot attachments require the approved task, revision, root, and unchanged regular file',async t=>{
+  const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'snapshot-result-files-')));t.after(()=>rm(root,{recursive:true,force:true}));
+  const options={artifactRoot:path.join(root,'worktrees'),snapshotRoot:path.join(root,'artifacts'),taskId:'task-one'},workspace=path.join(options.artifactRoot,options.taskId),snapshot=path.join(options.snapshotRoot,'task-one-r1/files');
+  await mkdir(workspace,{recursive:true});await mkdir(path.join(snapshot,'deliverables'),{recursive:true});const file=path.join(snapshot,'deliverables/report.md');await writeFile(file,'report');
+  const result={workspace,taskRevision:1,artifactSnapshot:{taskId:'task-one',taskRevision:1,root:snapshot},artifacts:[{relative:'deliverables/report.md',path:file,bytes:6,sha256:digest('report')}]};
+  assert.equal((await resultFiles(result,options))[0].attachment.toString(),'report');
+  await assert.rejects(resultFiles(result,{...options,taskId:'task-other'}),{code:'RESULT_SNAPSHOT_BINDING_MISMATCH'});
+  await assert.rejects(resultFiles({...result,taskRevision:2},options),{code:'RESULT_SNAPSHOT_BINDING_MISMATCH'});
+  await assert.rejects(resultFiles(result,{artifactRoot:options.artifactRoot,taskId:options.taskId}),{code:'RESULT_SNAPSHOT_BINDING_MISMATCH'});
+  await assert.rejects(resultFiles({...result,artifactSnapshot:{...result.artifactSnapshot,root:workspace}},options),{code:'RESULT_SNAPSHOT_ROOT_MISMATCH'});
+  assert.deepEqual(await resultFiles(result,{...options,artifactRoot:null,snapshotRoot:null}),[]);
+  await writeFile(file,'alter!');await assert.rejects(resultFiles(result,options),{code:'RESULT_FILE_CHANGED'});
+  const elsewhere=path.join(root,'private.md');await writeFile(elsewhere,'report');await rm(file);await symlink(elsewhere,file);await assert.rejects(resultFiles(result,options),{code:'LINK_PATH_REFUSED'});
 });

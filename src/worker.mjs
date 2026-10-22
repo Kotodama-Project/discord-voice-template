@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {mkdir,readFile,writeFile,lstat,open} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,lstat,open,realpath} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {invokeCodex,modelExecution,parseModelJson,bindExecution} from './llm.mjs';
 import {CodexTaskExecution,executionBinding} from './codex-app-server.mjs';
@@ -32,7 +32,8 @@ export class CliWorker {
     const resultRoot=path.join(cfg.dataDir,'artifacts',executionRef);await mkdir(resultRoot,{recursive:true,mode:0o700});
     const execution=appServer?await executionBinding(cfg,task):null;
     let cwd=cfg.worker.workspace,baseRevision=null;
-    if(write){
+    // Read-only revisions inspect the existing candidate and cannot replace its binding.
+    if(write||execution?.binding?.baseRevision){
       cwd=path.join(cfg.dataDir,'worktrees',appServer?task.id:executionRef);await mkdir(path.dirname(cwd),{recursive:true,mode:0o700});
       if(execution?.binding?.baseRevision){
         check(execution.binding.workspace===cwd,'EXECUTION_WORKSPACE_MISMATCH');
@@ -84,7 +85,7 @@ export class CliWorker {
     const summaryFile=path.join(resultRoot,'result.md');await writeFile(summaryFile,answer.summary,{encoding:'utf8',flag:'wx',mode:0o600});
     artifacts.push({path:summaryFile,relative:'result.md',sha256:digest(answer.summary),bytes:Buffer.byteLength(answer.summary)});
     if(write){const diff=await runCommand('git',['diff','--binary',baseRevision],{cwd,signal,timeoutMs:30000});check(diff.code===0,'DIFF_FAILED');const diffFile=path.join(resultRoot,'changes.patch');await writeFile(diffFile,diff.stdout,{encoding:'utf8',flag:'wx',mode:0o600});artifacts.push({path:diffFile,relative:'changes.patch',sha256:digest(diff.stdout),bytes:Buffer.byteLength(diff.stdout)});}
-    await authorize();const result={state:'needs_review',summary:answer.summary,artifacts,validations,sourceRevision:task.source_revision,taskRevision:task.revision,workspace:cwd,baseRevision,verifiedExecution:true,independentReview:false,resultFormat,modelExecution:modelExecution(answer)};
+    await authorize();const result={state:'needs_review',summary:answer.summary,artifacts,validations,sourceRevision:task.source_revision,taskRevision:task.revision,workspace:cwd,baseRevision,...(appServer&&write?{artifactSnapshot:{taskId:task.id,taskRevision:task.revision,root:path.join(await realpath(resultRoot),'files')}}:{}),verifiedExecution:true,independentReview:false,resultFormat,modelExecution:modelExecution(answer)};
     await atomicJson(path.join(resultRoot,'receipt.json'),result);return result;
     }finally{await session?.close();}
   }

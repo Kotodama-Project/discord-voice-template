@@ -22,7 +22,7 @@ for await(const line of createInterface({input:process.stdin,crlfDelay:Infinity}
   const reply=result=>emit({id:message.id,result});
   if(message.method==='initialize')reply({userAgent:'synthetic'});
   else if(message.method==='account/login/start'){state.auth=p.type;await save();reply({type:p.type});}
-  else if(message.method==='account/read')reply({account:{type:option('--fixture-wrong-auth')?'chatgpt':state.auth??'chatgpt'},requiresOpenaiAuth:true});
+  else if(message.method==='account/read')reply({account:{type:option('--fixture-wrong-auth')?'chatgpt':option('--fixture-saved-api-auth')?'apiKey':state.auth??'chatgpt'},requiresOpenaiAuth:true});
   else if(message.method==='thread/start'){
     const thread={id:'thread-'+(state.threads.length+1),turns:[]};state.threads.push(thread);await save();reply({thread});
   }else if(message.method==='thread/resume'){
@@ -35,7 +35,10 @@ for await(const line of createInterface({input:process.stdin,crlfDelay:Infinity}
     if(option('--fixture-lost-end')){setTimeout(()=>process.exit(0),20);continue;}
     if(option('--fixture-wait'))continue;
     if(option('--fixture-approval')){emit({id:counter++,method:'item/commandExecution/requestApproval',params:{threadId:thread.id,turnId:turn.id}});continue;}
-    if(p.sandboxPolicy.type==='workspaceWrite')await writeFile(path.join(p.cwd,'created.mjs'),`export const answer = ${thread.turns.length};\n`);
+    if(p.sandboxPolicy.type==='workspaceWrite'){
+      await writeFile(path.join(p.cwd,'created.mjs'),`export const answer = ${thread.turns.length};\n`);
+      if(option('--fixture-deliverable')){await mkdir(path.join(p.cwd,'deliverables'),{recursive:true});await writeFile(path.join(p.cwd,'deliverables/report.md'),`Report ${thread.turns.length}`);}
+    }
     const result=JSON.stringify({summary:'synthetic verified candidate',files:[]});
     // Another native subagent's final output must not overwrite the root result.
     emit({method:'item/completed',params:{threadId:'child-thread',turnId:turn.id,item:{type:'agentMessage',text:'wrong child output'}}});

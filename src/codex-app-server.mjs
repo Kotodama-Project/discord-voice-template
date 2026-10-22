@@ -36,6 +36,7 @@ export class CodexAppServer {
     const args=[...(cfg.args??[]),'-c','model_provider="openai"','-c','approval_policy="never"','-c','sandbox_mode="read-only"',
       '--disable','apps','--disable','plugins','--disable','hooks','--disable','image_generation','--enable','multi_agent','-c','web_search="disabled"'];
     if(cfg.apiKeyEnv)args.push('-c','cli_auth_credentials_store="ephemeral"','-c','forced_login_method="api"');
+    else args.push('-c','forced_login_method="chatgpt"');
     args.push('app-server','--stdio');
     const env=workerEnv({CODEX_HOME:home});
     this.child=spawn(cfg.executable,args,{cwd:this.cwd,env,stdio:['pipe','pipe','pipe'],detached:true,windowsHide:true});
@@ -67,7 +68,7 @@ export class CodexAppServer {
         await this.request('account/login/start',{type:'apiKey',apiKey});
       }
       const auth=await this.request('account/read',{refreshToken:false});
-      check(cfg.apiKeyEnv?auth?.account?.type==='apiKey':['chatgpt','apiKey'].includes(auth?.account?.type),'CODEX_LOGIN_REQUIRED');
+      check(auth?.account?.type===(cfg.apiKeyEnv?'apiKey':'chatgpt'),'CODEX_LOGIN_REQUIRED');
       this.authMode=auth.account.type;return this;
     }catch(error){await this.close();throw error;}
   }

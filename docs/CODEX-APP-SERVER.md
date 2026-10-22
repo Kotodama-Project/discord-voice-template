@@ -21,7 +21,7 @@
 ## 認証を分ける
 
 - `apiKeyEnv`を指定すると、`dataDir/codex-app-server`を専用のCodex homeにし、`cli_auth_credentials_store="ephemeral"`でAPI keyをプロセス内だけに設定します。`account/read`がAPI key認証を返したことを確認してからTaskを送ります。subscriptionへのfallbackや、親のauthファイルの変更は行いません。
-- 既存の個人ログインを使う場合は`apiKeyEnv`を省略し、本人がログイン済みの専用`codexHome`を指定します。BotがブラウザログインやMFAを代行しません。API key用homeと同時指定できません。
+- 既存の個人ログインを使う場合は`apiKeyEnv`を省略し、本人がChatGPTへログイン済みの専用`codexHome`を指定します。`account/read`が`chatgpt`を返すことを確認し、保存済みAPI key認証は拒否します。BotがブラウザログインやMFAを代行しません。API key用homeと同時指定できません。
 - App Serverには`codex exec --ignore-user-config`と同じ起動optionがありません。既定の`ignoreUserConfig: true`では、選んだhomeに`config.toml`があると開始を拒否します。必要な個人設定を読む場合はoperatorが内容と実行権限を確認した専用homeで`ignoreUserConfig: false`を明示します。
 
 ChatGPT subscriptionの権利とAPIの従量課金は別です。このadapterは共有・商用hostedサービス向けのSign in with ChatGPTを実装していません。その提供形態へ、個人のApp Server認証を転用しません。[公式App Server認証](https://learn.chatgpt.com/docs/app-server#auth-endpoints)、[認証とephemeral保存](https://learn.chatgpt.com/docs/auth)を確認してください。
@@ -29,6 +29,8 @@ ChatGPT subscriptionの権利とAPIの従量課金は別です。このadapter�
 ## 同じ仕事を継続する
 
 `dataDir/executions/<taskId>.json`はTaskとCodex thread/turn、使用workspace、入力revision、送信/終了状況の対応だけを保存します。Task ownerの権限・Source・状態台帳を置き換えません。同じTaskの訂正や明示的な再開は、同じthreadと変更候補のworktreeを使います。新しいrevisionの成果とpatchは別に保存します。
+
+書込み後に読取り専用の調査へ訂正した場合も、同じ変更候補をread-onlyで調べます。後で書込みへ戻しても候補とthreadを維持します。配送するファイルは`dataDir/artifacts/<taskId>-r<revision>/files`のsnapshotへ固定し、現在のTask ID・revision・許可された保存先・hashを照合します。後続の訂正で以前の配送内容を書き換えません。
 
 turn送信前に状態を書き、同じrevisionを自動再送しません。応答が失われた場合、分かっているturn IDだけを公式履歴から照合します。実行中やturn ID自体が不明なら`EXECUTION_RECONCILIATION_REQUIRED`として止めます。threadや対応ファイルを消して仕事をやり直す前に、operatorが既存の結果と外部効果を確認する必要があります。
 

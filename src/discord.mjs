@@ -30,6 +30,7 @@ export class DiscordAdapter {
   }
   operator(actor){check(this.policy().discord.operators.includes(actor),'OPERATOR_REQUIRED');}
   artifactRoot(){return this.config.owner.kind==='local'?path.join(this.config.dataDir,'worktrees'):null;}
+  resultFileOptions(taskId){return {artifactRoot:this.artifactRoot(),snapshotRoot:this.config.owner.kind==='local'?path.join(this.config.dataDir,'artifacts'):null,taskId};}
   async member(actor){this.operator(actor);const guild=await this.client.guilds.fetch(this.config.discord.guildId);return guild.members.fetch({user:actor,force:true});}
   async canRead(channel,actor){
     try{channel=await this.client.channels.fetch(channel.id,{force:true});const member=await channel.guild.members.fetch({user:actor,force:true});await channel.guild.roles.fetch();const p=channel.permissionsFor(member);if(!p?.has(PermissionFlagsBits.ViewChannel)||!p.has(PermissionFlagsBits.ReadMessageHistory))return false;
@@ -84,7 +85,7 @@ export class DiscordAdapter {
       if(sub==='do'){const request=i.options.getString('text',true),action=i.options.getString('action',true);const t=await this.pipeline.request(this.interactionSource(i,request),{title:request.slice(0,120),request,action});text=`受け付けました。\n${t.id}\n結果はこの仕事の「result」で確認できます。`;}
       else if(sub==='ask'){const source=this.interactionSource(i,i.options.getString('text',true));source.metadata.operation='ask';const receipt=await this.pipeline.ingest(source,{execute:false,reply:false});for(const b of receipt.contextSources??[]){const s=this.store.source(b.key,i.user.id);check(s.revision===b.revision,'CONTEXT_CHANGED');if(s.provider==='discord'){const channel=await this.client.channels.fetch(s.channelId);check(await this.canRead(channel,i.user.id),'SOURCE_ACCESS_DENIED');}}text=receipt.answer??receipt.summary??'整理しました。';}
       else if(sub==='tasks'){const tasks=await this.pipeline.owner.tasks(i.user.id);const visible=[];for(const task of tasks)try{await this.pipeline.authorize(task,'read_result');visible.push(task);}catch{}text=visible.slice(0,15).map(t=>`${t.id} · ${{queued:'受付済み',running:'実行中',needs_review:'成果確認待ち',stale:'訂正により無効',failed:'失敗',cancelled:'停止済み',stopping:'停止処理中',uncertain:'状態確認中'}[t.state]??t.state}\n${t.title}`).join('\n')||'読取可能な仕事はまだありません。';}
-      else if(sub==='result'){const result=await this.pipeline.result(i.options.getString('task',true),i.user.id);const files=await resultFiles(result,{artifactRoot:this.artifactRoot()});await i.editReply({content:shortText(result.summary),files,allowedMentions:{parse:[]}});return;}
+      else if(sub==='result'){const taskId=i.options.getString('task',true),result=await this.pipeline.result(taskId,i.user.id);const files=await resultFiles(result,this.resultFileOptions(taskId));await i.editReply({content:shortText(result.summary),files,allowedMentions:{parse:[]}});return;}
       else if(sub==='stop'){await this.pipeline.stop(i.options.getString('task',true),i.user.id);text='停止を受け付けました。実行中の処理の終了を確認しています。';}
       else if(sub==='resume'){const t=await this.pipeline.resume(i.options.getString('task',true),i.user.id);text=`再開しました。${t.id}`;}
       else if(sub==='voice'){check(this.voice,'VOICE_NOT_CONFIGURED');const mode=i.options.getString('mode',true);
@@ -126,7 +127,7 @@ export class DiscordAdapter {
     if(this.notifications?.quiet()){this.notifications.defer(digest(['task',task.id,task.revision]),'task',{id:task.id,revision:task.revision,actor:task.actor});return {state:'deferred'};}
     await this.pipeline.authorize(task,'read_result');await this.member(task.actor);const source=this.store.source(task.source_key,task.actor);const channel=await this.client.channels.fetch(source.channelId);check(await this.canRead(channel,task.actor),'SOURCE_ACCESS_DENIED');
     const key=digest([task.id,task.revision,'result']);const text=`仕事の成果ができました（確認待ち）。\n${task.id}\n${task.result.summary}`;
-    const files=await resultFiles(task.result,{artifactRoot:this.artifactRoot()});await this.pipeline.authorize(task,'read_result');
+    const files=await resultFiles(task.result,this.resultFileOptions(task.id));await this.pipeline.authorize(task,'read_result');
     if(!this.store.claimDelivery(key,text))return;
     try{const user=await this.client.users.fetch(task.actor);const message=await user.send({content:shortText(text),files,allowedMentions:{parse:[]}});this.store.delivered(key,message.id);}catch{this.onError('RESULT_DELIVERY_UNKNOWN');}
   }

@@ -8,6 +8,8 @@ import {exampleConfig} from '../src/config.mjs';
 import {CliWorker} from '../src/worker.mjs';
 import {CodexAppServer,executionBinding} from '../src/codex-app-server.mjs';
 import {runCommand} from '../src/command.mjs';
+import {resultFiles} from '../src/result-files.mjs';
+import {DiscordAdapter} from '../src/discord.mjs';
 
 const fixtureCli=fileURLToPath(new URL('./fixtures/app-server.mjs',import.meta.url));
 async function fixture(t,{args=[],write=false,api=false}={}){
@@ -47,6 +49,29 @@ test('API authentication is explicit, ephemeral, and never inherited by generate
 
 test('requested API auth cannot silently use a subscription account',{skip:process.platform==='win32'},async t=>{
   const {task,state,worker}=await fixture(t,{api:true,args:['--fixture-wrong-auth']});await assert.rejects(worker.run(task,[]),{code:'CODEX_LOGIN_REQUIRED'});assert(!(await state()).calls.some(c=>c.method==='turn/start'));
+});
+
+test('subscription mode rejects a saved API key before submitting a model turn',{skip:process.platform==='win32'},async t=>{
+  const {task,state,worker}=await fixture(t,{args:['--fixture-saved-api-auth']});await assert.rejects(worker.run(task,[]),{code:'CODEX_LOGIN_REQUIRED'});
+  const log=await state();assert(log.calls[0].args.includes('forced_login_method="chatgpt"'));assert(!log.calls.some(c=>c.method==='turn/start'||c.method==='account/login/start'));
+});
+
+test('write, read-only review, and later write revisions retain the candidate and thread',{skip:process.platform==='win32'},async t=>{
+  const {config,task,state,worker}=await fixture(t,{write:true});config.worker.actions=['develop','research'];
+  const first=await worker.run(task,[]),review=await worker.run({...task,revision:2,action:'research'},[]),last=await worker.run({...task,revision:3},[]);
+  assert.equal(review.workspace,first.workspace);assert.equal(last.workspace,first.workspace);assert.equal(last.modelExecution.threadId,first.modelExecution.threadId);
+  const turns=(await state()).calls.filter(c=>c.method==='turn/start');assert.deepEqual(turns.map(c=>c.params.sandboxPolicy.type),['workspaceWrite','readOnly','workspaceWrite']);assert(turns.every(c=>c.params.cwd===first.workspace));
+  assert.equal(await readFile(last.artifacts.find(a=>a.relative==='created.mjs').path,'utf8'),'export const answer = 3;\n');
+});
+
+test('worker snapshots deliver through automatic DM and result after a later correction',{skip:process.platform==='win32'},async t=>{
+  const {config,task,worker}=await fixture(t,{write:true,args:['--fixture-deliverable']});
+  const first=await worker.run(task,[]),second=await worker.run({...task,revision:2},[]),sent=[],replies=[];
+  const adapter=new DiscordAdapter({config,store:{source:()=>({channelId:config.discord.resultChannelId}),claimDelivery:()=>true,delivered:()=>{}},pipeline:{authorize:async()=>{},result:async()=>first}});t.after(()=>adapter.client.destroy());
+  adapter.verifiedInstallation=true;adapter.member=async()=>({});adapter.canRead=async()=>true;adapter.client.channels.fetch=async()=>({});adapter.client.users.fetch=async()=>({send:async value=>{sent.push(value);return {id:'fixture-message'};}});
+  await adapter.deliver({...task,result:first});assert.equal(sent[0].files[0].attachment.toString(),'Report 1');
+  await adapter.interaction({guildId:config.discord.guildId,commandName:'kotodama',user:{id:task.actor},isButton:()=>false,isChatInputCommand:()=>true,options:{getSubcommand:()=> 'result',getString:()=> task.id},deferReply:async()=>{},editReply:async value=>replies.push(value)});
+  assert.equal(replies[0].files[0].attachment.toString(),'Report 1');assert.equal((await resultFiles(second,adapter.resultFileOptions(task.id)))[0].attachment.toString(),'Report 2');
 });
 
 test('a lost start response is not replayed and a new task revision cannot silently bypass it',{skip:process.platform==='win32'},async t=>{
