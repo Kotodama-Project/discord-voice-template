@@ -48,6 +48,8 @@ App Serverのapps・plugins・hooks・画像生成とweb検索はこの実行経
 
 ## 確認範囲
 
-ローカルfixtureはthread再利用、途中停止、送信結果不明の重複抑止、別actorの対応拒否、認証選択、生成と検証へのsandbox指定、失敗の伝播を検査します。2026-10-22にはCodex `0.163.0-alpha.10.2`のschemaと照合し、鍵もモデルturnも使わない実`command/exec`でworkspace内の書込み成功・外側の書込み拒否を確認しました。
+ローカルfixtureはthread再利用、途中停止、送信結果不明の重複抑止、別actorの対応拒否、認証選択、生成と検証へのsandbox指定、失敗の伝播を検査します。2026-10-22にはCodex `0.163.0-alpha.10.2` のschemaと照合し、macOSの実 `command/exec` でworkspace内の書込み成功・外側の拒否を確認しました。
 
-これは実モデルの仕事、Discord音声からの依頼、2人30分の会話、配備先での受入を通した証拠ではありません。それらは[製品Issue #3](https://github.com/Kotodama-Project/discord-voice-template/issues/3)で追跡します。
+Linuxでは既存CLIを変更せず、隔離した公式Codex `0.163.0` を使用。領域外・共有temporary領域の書込みとnetworkを拒否する実sandbox確認に加え、製品のResponses analyzer→Task→App Server実生成→sandbox内テスト→成果hash/添付bytesの読戻しが成功しました。認証はAPI key、専用homeにはauth.jsonもキー本文も残りませんでした。
+
+これは実Discord音声、複数AIによる実案件、2人30分の会話、稼働Botへの配備を受け入れた証拠ではありません。正確な範囲は[確認状況](ACCEPTANCE.md)、残件は[製品Issue #3](https://github.com/Kotodama-Project/discord-voice-template/issues/3)を参照します。
